@@ -1,0 +1,62 @@
+<launch>
+  <!-- Phase 2 Enhanced Object Follower Launch File -->
+  
+  <!-- Parameters -->
+  <param name="use_sim_time" value="false"/>
+  
+  <!-- Enhanced Object Detection Node -->
+  <node name="enhanced_object_detector" pkg="object_follower" type="enhanced_object_detector.py" output="screen">
+    <param name="detection_method" value="color"/>  <!-- color, contour, template -->
+    <param name="target_color" value="red"/>        <!-- red, blue, green, yellow -->
+    <!-- For testing with camera simulator -->
+    <remap from="/camera/image_raw" to="/camera/image_raw"/>
+  </node>
+  
+  <!-- Enhanced Motor Controller Node -->
+  <node name="enhanced_motor_controller" pkg="object_follower" type="enhanced_motor_controller.py" output="screen">
+    <param name="max_speed" value="0.4"/>
+    <param name="target_distance" value="1.0"/>
+    <param name="distance_tolerance" value="0.15"/>
+    <param name="wheel_distance" value="0.1"/>
+    <!-- Improved PID parameters -->
+    <param name="kp_lateral" value="1.8"/>
+    <param name="ki_lateral" value="0.08"/>
+    <param name="kd_lateral" value="0.6"/>
+    <param name="kp_distance" value="0.9"/>
+    <param name="ki_distance" value="0.04"/>
+    <param name="kd_distance" value="0.25"/>
+  </node>
+  
+  <!-- Obstacle Detector Node -->
+  <node name="obstacle_detector" pkg="object_follower" type="obstacle_detector.py" output="screen">
+    <param name="detection_method" value="edge"/>
+    <param name="min_obstacle_area" value="1000"/>
+    <param name="safe_distance_pixels" value="100"/>
+    <!-- For testing with camera simulator -->
+    <remap from="/camera/image_raw" to="/camera/image_raw"/>
+  </node>
+  
+  <!-- Performance Monitor -->
+  <node name="performance_monitor" pkg="object_follower" type="performance_monitor.py" output="screen">
+    <param name="target_distance" value="1.0"/>
+  </node>
+  
+  <!-- System Monitor -->
+  <node name="system_monitor" pkg="object_follower" type="system_monitor.py" output="screen"/>
+  
+  <!-- Camera Simulator for Testing -->
+  <node name="camera_simulator" pkg="object_follower" type="camera_simulator.py" output="screen"/>
+  
+  <!-- Optional: USB Camera for testing (uncomment to use real webcam) -->
+  <!-- 
+  <node name="usb_cam" pkg="usb_cam" type="usb_cam_node" output="screen">
+    <param name="video_device" value="/dev/video0"/>
+    <param name="image_width" value="640"/>
+    <param name="image_height" value="480"/>
+    <param name="pixel_format" value="yuyv"/>
+    <param name="camera_frame_id" value="usb_cam"/>
+    <param name="io_method" value="mmap"/>
+  </node>
+  -->
+  
+</launch>

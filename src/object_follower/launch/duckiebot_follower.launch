@@ -1,0 +1,46 @@
+<launch>
+  <!-- DuckieBot-specific Object Follower Launch File -->
+  
+  <!-- Parameters -->
+  <param name="use_sim_time" value="false"/>
+  
+  <!-- Enhanced Object Detection Node -->
+  <node name="enhanced_object_detector" pkg="object_follower" type="enhanced_object_detector.py" output="screen">
+    <param name="detection_method" value="color"/>
+    <param name="target_color" value="red"/>
+    <!-- No remapping needed - handles both compressed and raw images -->
+  </node>
+  
+  <!-- Enhanced Motor Controller Node -->
+  <node name="enhanced_motor_controller" pkg="object_follower" type="enhanced_motor_controller.py" output="screen">
+    <param name="max_speed" value="0.3"/>
+    <param name="target_distance" value="0.8"/>
+    <param name="distance_tolerance" value="0.15"/>
+    <param name="wheel_distance" value="0.1"/>
+    <param name="kp_lateral" value="1.5"/>
+    <param name="ki_lateral" value="0.08"/>
+    <param name="kd_lateral" value="0.4"/>
+    <param name="kp_distance" value="0.8"/>
+    <param name="ki_distance" value="0.03"/>
+    <param name="kd_distance" value="0.15"/>
+  </node>
+  
+  <!-- Obstacle Detector Node -->
+  <node name="obstacle_detector" pkg="object_follower" type="obstacle_detector.py" output="screen">
+    <param name="detection_method" value="edge"/>
+    <param name="min_obstacle_area" value="800"/>
+    <param name="safe_distance_pixels" value="80"/>
+    <!-- No remapping needed - will be updated to handle compressed images -->
+  </node>
+  
+  <!-- Performance Monitor -->
+  <node name="performance_monitor" pkg="object_follower" type="performance_monitor.py" output="screen">
+    <param name="target_distance" value="0.8"/>
+  </node>
+  
+  <!-- System Monitor -->
+  <node name="system_monitor" pkg="object_follower" type="system_monitor.py" output="screen"/>
+  
+</launch>
+  
+</launch>
