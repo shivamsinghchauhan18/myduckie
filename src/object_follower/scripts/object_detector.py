@@ -12,8 +12,7 @@ from sensor_msgs.msg import Image
 from geometry_msgs.msg import Point
 from std_msgs.msg import Bool, Float32
 from cv_bridge import CvBridge
-import tf2_ros
-import tf2_geometry_msgs
+# Removed unused tf2 imports for DuckieBot compatibility
 
 class ObjectDetector:
     def __init__(self):

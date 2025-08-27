@@ -12,8 +12,7 @@ from sensor_msgs.msg import Image, CompressedImage
 from geometry_msgs.msg import Point
 from std_msgs.msg import Bool, Float32, String
 from cv_bridge import CvBridge
-import tf2_ros
-import tf2_geometry_msgs
+# Removed tf2 imports - not needed for basic object detection
 
 class EnhancedObjectDetector:
     def __init__(self):
