@@ -11,7 +11,6 @@ find_package(catkin REQUIRED COMPONENTS
   tf2
   tf2_ros
   visualization_msgs
-  duckietown_msgs
 )
 
 catkin_package(
@@ -25,7 +24,6 @@ catkin_package(
     tf2 
     tf2_ros 
     visualization_msgs
-    duckietown_msgs
 )
 
 include_directories(
@@ -48,4 +46,9 @@ catkin_install_python(PROGRAMS
   scripts/detector_tester.py
   scripts/duckiebot_checker.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+# Install launch files
+install(DIRECTORY launch/
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
 )

@@ -2,7 +2,7 @@
 
 """
 Enhanced Motor Controller Node for DuckieBot - Phase 2
-Full DuckieBot integration with advanced PID control and performance monitoring
+Optimized for DuckieBot deployment with official duckietown_msgs
 """
 
 import rospy
@@ -15,9 +15,9 @@ class EnhancedMotorController:
     def __init__(self):
         rospy.init_node('enhanced_motor_controller', anonymous=True)
         
-        # Publishers - Multiple message types for compatibility
+        # Publishers - Full DuckieBot integration with official messages
         self.cmd_vel_pub = rospy.Publisher('/cmd_vel', Twist, queue_size=1)
-        self.wheels_pub = rospy.Publisher('/duckiebot_driver/wheels_cmd', WheelsCmdStamped, queue_size=1)
+        self.wheels_pub = rospy.Publisher('/wheels_driver_node/wheels_cmd', WheelsCmdStamped, queue_size=1)
         self.duckiebot_vel_pub = rospy.Publisher('/car_cmd_switch_node/cmd', Twist2DStamped, queue_size=1)
         
         # Performance monitoring publishers
@@ -65,7 +65,7 @@ class EnhancedMotorController:
         # Control loop timer
         self.control_timer = rospy.Timer(rospy.Duration(0.05), self.control_loop)  # 20 Hz
         
-        rospy.loginfo("Enhanced Motor Controller with DuckieBot support initialized")
+        rospy.loginfo("Enhanced Motor Controller - DuckieBot deployment ready")
     
     def target_callback(self, msg):
         self.target_position = msg
