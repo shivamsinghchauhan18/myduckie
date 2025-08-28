@@ -116,7 +116,6 @@ async def detect_tennis_ball(file: UploadFile = File(...)):
     
     # Encode debug image as base64 (optional, for debugging)
     _, buffer = cv2.imencode('.jpg', image)
-    debug_image_base64 = base64.b64encode(buffer).decode('utf-8')
     
     return DetectionResponse(
         target_found=target_found,
@@ -125,7 +124,6 @@ async def detect_tennis_ball(file: UploadFile = File(...)):
         target_position_x=target_position_x,
         target_position_y=target_position_y,
         estimated_distance=estimated_distance,
-        debug_image_base64=debug_image_base64
     )
 
 @app.get("/")

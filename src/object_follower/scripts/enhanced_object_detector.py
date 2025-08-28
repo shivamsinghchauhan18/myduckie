@@ -193,27 +193,6 @@ class EnhancedObjectDetector:
                     info_msg = f"Method: YOLOv8_API, Confidence: {confidence:.2f}, Distance: {result['estimated_distance']:.2f}m"
                     self.detection_info_pub.publish(String(info_msg))
 
-                    # Use debug image from API if available
-                    if result.get('debug_image_base64'):
-                        try:
-                            debug_bytes = base64.b64decode(result['debug_image_base64'])
-                            debug_image = cv2.imdecode(np.frombuffer(debug_bytes, np.uint8), cv2.IMREAD_COLOR)
-
-                            # Add performance info to debug image
-                            elapsed = (rospy.Time.now() - self.start_time).to_sec()
-                            detection_rate = self.detection_count / max(elapsed, 1.0)
-                            cv2.putText(debug_image, f"Rate: {detection_rate:.1f} Hz", (10, 30), 
-                                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-                            cv2.putText(debug_image, f"Tracking: {self.consecutive_detections}", (10, 60), 
-                                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-                            cv2.putText(debug_image, f"API Fails: {self.api_failure_count}", (10, 90), 
-                                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-
-                            debug_msg = self.bridge.cv2_to_imgmsg(debug_image, "bgr8")
-                            self.debug_image_pub.publish(debug_msg)
-                        except Exception as e:
-                            rospy.logwarn(f"Could not process debug image: {str(e)}")
-
             else:
                 # Handle tracking loss or API failure
                 self.tracking_loss_count += 1
