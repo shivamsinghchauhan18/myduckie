@@ -16,7 +16,6 @@ from std_msgs.msg import Bool, Float32, String
 from cv_bridge import CvBridge
 import threading
 
-session = requests.Session()
 
 class EnhancedObjectDetector:
     def __init__(self):
@@ -25,6 +24,9 @@ class EnhancedObjectDetector:
         
         # Initialize CV bridge
         self.bridge = CvBridge()
+
+        self.session = requests.Session()
+        self.session.headers.update({'Connection': 'keep-alive'})
         
         # Publishers
         self.target_pub = rospy.Publisher('/object_follower/target_position', Point, queue_size=1)
@@ -159,48 +161,48 @@ class EnhancedObjectDetector:
                 new_width = int(width * scale)
                 new_height = int(height * scale)
                 image = cv2.resize(image, (new_width, new_height))
-    
+
             result = self.call_detection_api(image)
-    
+
             if result and result.get('target_found', False):
                 best_detection = result.get('best_detection')
                 if best_detection:
                     center_x = best_detection['center_x']
                     center_y = best_detection['center_y']
                     confidence = best_detection['confidence']
-    
+
                     # Kalman filter prediction and update
                     if not self.kalman_initialized:
                         self.kalman.statePre = np.array([center_x, center_y, 0, 0], dtype=np.float32)
                         self.kalman.statePost = np.array([center_x, center_y, 0, 0], dtype=np.float32)
                         self.kalman_initialized = True
-    
+
                     prediction = self.kalman.predict()
                     measurement = np.array([[center_x], [center_y]], dtype=np.float32)
                     self.kalman.correct(measurement)
-    
+
                     # Use API's normalized coordinates directly
                     target_point = Point()
                     target_point.x = result['target_position_x']
                     target_point.y = result['target_position_y']
                     target_point.z = result['estimated_distance']
-    
+
                     # Publish target information
                     self.target_pub.publish(target_point)
                     self.distance_pub.publish(Float32(result['estimated_distance']))
                     self.target_found_pub.publish(Bool(True))
-    
+
                     # Update tracking
                     self.last_known_position = target_point
                     self.tracking_confidence = confidence
                     self.consecutive_detections += 1
                     self.tracking_loss_count = 0
                     self.detection_count += 1
-    
+
                     # Publish detection info
                     info_msg = f"Method: YOLOv8_API, Confidence: {confidence:.2f}, Distance: {result['estimated_distance']:.2f}m"
                     self.detection_info_pub.publish(String(info_msg))
-    
+
             else:
                 # Handle tracking loss or API failure
                 self.tracking_loss_count += 1
@@ -217,7 +219,7 @@ class EnhancedObjectDetector:
                                   10, (255, 255, 0), 2)
                         cv2.putText(debug_image, "PREDICTED", (int(prediction[0]), int(prediction[1])-20), 
                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
-    
+
                         try:
                             debug_msg = self.bridge.cv2_to_imgmsg(debug_image, "bgr8")
                             self.debug_image_pub.publish(debug_msg)
@@ -225,7 +227,7 @@ class EnhancedObjectDetector:
                             rospy.logwarn(f"Could not publish prediction debug image: {str(e)}")
                     else:
                         self.target_found_pub.publish(Bool(False))
-        
+
         finally:
             self._processing = False
 
