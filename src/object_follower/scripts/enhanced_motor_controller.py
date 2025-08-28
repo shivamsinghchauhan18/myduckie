@@ -37,10 +37,9 @@ class EnhancedMotorController:
         # Robot parameters
         self.wheel_distance = rospy.get_param('~wheel_distance', 0.1)  # meters between wheels
         
-        # Enhanced PID parameters
-        self.kp_lateral = rospy.get_param('~kp_lateral', 2.5)
-        self.ki_lateral = rospy.get_param('~ki_lateral', 0.15)
-        self.kd_lateral = rospy.get_param('~kd_lateral', 0.8)
+        self.kp_lateral = rospy.get_param('~kp_lateral', 1.5)  # Reduced from 2.5
+        self.ki_lateral = rospy.get_param('~ki_lateral', 0.08) # Reduced from 0.15
+        self.kd_lateral = rospy.get_param('~kd_lateral', 0.3)  # Reduced from 0.8
         
         self.kp_distance = rospy.get_param('~kp_distance', 1.2)
         self.ki_distance = rospy.get_param('~ki_distance', 0.08)
@@ -69,13 +68,23 @@ class EnhancedMotorController:
         self.centering_mode = rospy.get_param('~centering_mode', True)  # Enable centering
 
         # More aggressive lateral control for centering
-        self.kp_lateral_centering = rospy.get_param('~kp_lateral_centering', 3.5)  # Higher than current
-        self.ki_lateral_centering = rospy.get_param('~ki_lateral_centering', 0.2)
-        self.kd_lateral_centering = rospy.get_param('~kd_lateral_centering', 1.2)
+        self.kp_lateral_centering = rospy.get_param('~kp_lateral_centering', 1.8)  # Reduced from 3.5
+        self.ki_lateral_centering = rospy.get_param('~ki_lateral_centering', 0.05)  # Reduced from 0.2
+        self.kd_lateral_centering = rospy.get_param('~kd_lateral_centering', 0.4)   # Reduced from 1.2
+
 
         # Distance-based speed scaling
         self.min_speed_factor = rospy.get_param('~min_speed_factor', 0.3)  # Minimum speed when turning
         self.centering_threshold = rospy.get_param('~centering_threshold', 0.15)  # Consider "centered" within ±0.15
+
+        # Anti-fidgeting parameters
+        self.lateral_deadband = rospy.get_param('~lateral_deadband', 0.08)  # Ignore small errors
+        self.min_angular_vel = rospy.get_param('~min_angular_vel', 0.1)     # Minimum turn command
+        self.smoothing_factor = rospy.get_param('~smoothing_factor', 0.7)   # Output smoothing
+
+        #Previous command for smoothing
+        self.prev_angular_vel = 0.0
+        self.prev_linear_vel = 0.0
         
         rospy.loginfo("Enhanced Motor Controller - DuckieBot deployment ready")
     
@@ -111,15 +120,15 @@ class EnhancedMotorController:
             return
         
         # Adaptive PID tuning every few cycles
-        if len(self.control_history) % 10 == 0:
-            self.adaptive_pid_tuning()
+        # if len(self.control_history) % 10 == 0:
+        #     self.adaptive_pid_tuning()
         
         # Calculate control commands
         linear_vel, angular_vel = self.calculate_enhanced_control_commands()
         
         # Apply velocity limits (higher angular limits for faster turning)
         linear_vel = np.clip(linear_vel, -self.max_speed, self.max_speed)
-        angular_vel = np.clip(angular_vel, -3.0, 3.0)  # Increased from 2.0 to 3.0
+        angular_vel = np.clip(angular_vel, -1.5, 1.5)  # Increased from 2.0 to 3.0
         
         # Publish commands to all topics
         self.publish_velocity_commands(linear_vel, angular_vel)
@@ -163,19 +172,25 @@ class EnhancedMotorController:
 
         # Lateral control (steering) - MORE AGGRESSIVE for centering
         lateral_error = self.target_position.x  # -1 to 1, 0 is center
-        self.lateral_error_integral += lateral_error * dt
-        lateral_error_derivative = (lateral_error - self.lateral_error_previous) / dt
+        # Apply deadband - ignore small errors
+        if abs(lateral_error) < self.lateral_deadband:
+            lateral_error = 0.0
+            self.lateral_error_integral *= 0.9  # Decay integral when in deadband
         
         # Anti-windup for integral term
-        self.lateral_error_integral = np.clip(self.lateral_error_integral, -0.5, 0.5)
+        self.lateral_error_integral = np.clip(self.lateral_error_integral, -0.3, 0.3)
 
         angular_vel = -(kp_lat * lateral_error + 
                        ki_lat * self.lateral_error_integral + 
                        kd_lat * lateral_error_derivative)
 
+        # Apply minimum command threshold
+        if abs(angular_vel) < self.min_angular_vel:
+            angular_vel = 0.0
+
         self.lateral_error_previous = lateral_error
         
-        # Distance control (forward/backward)
+        # Distance control 
         distance_error = self.current_distance - self.target_distance
         self.distance_error_integral += distance_error * dt
         distance_error_derivative = (distance_error - self.distance_error_previous) / dt
@@ -189,19 +204,21 @@ class EnhancedMotorController:
 
         self.distance_error_previous = distance_error
         
-        # ENHANCED: Dynamic speed scaling based on centering accuracy
-        if abs(lateral_error) > self.centering_threshold:
-            # Ball is not centered - prioritize turning over forward movement
-            speed_factor = max(self.min_speed_factor, 1.0 - 2.0 * abs(lateral_error))
-            linear_vel *= speed_factor
-            
-            # Boost angular velocity when far from center (faster turns)
-            angular_boost = 1.0 + abs(lateral_error)
-            angular_vel *= angular_boost
+        # GENTLE speed scaling (less aggressive)
+        if abs(self.target_position.x) > self.centering_threshold:
+            speed_factor = max(0.6, 1.0 - 0.5 * abs(self.target_position.x))  # Less aggressive
         else:
-            # Ball is centered - allow normal forward movement
-            speed_factor = 1.0 - 0.3 * abs(lateral_error)  # Less aggressive reduction
-            linear_vel *= speed_factor
+            speed_factor = 1.0 - 0.2 * abs(self.target_position.x)
+
+        linear_vel *= speed_factor
+
+        # SMOOTH OUTPUT - blend with previous commands
+        angular_vel = self.smoothing_factor * self.prev_angular_vel + (1 - self.smoothing_factor) * angular_vel
+        linear_vel = self.smoothing_factor * self.prev_linear_vel + (1 - self.smoothing_factor) * linear_vel
+    
+        # Store for next iteration
+        self.prev_angular_vel = angular_vel
+        self.prev_linear_vel = linear_vel
         
         return linear_vel, angular_vel
     
