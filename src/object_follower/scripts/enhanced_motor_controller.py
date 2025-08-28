@@ -41,7 +41,7 @@ class EnhancedMotorController:
         self.ki_lateral = rospy.get_param('~ki_lateral', 0.08) # Reduced from 0.15
         self.kd_lateral = rospy.get_param('~kd_lateral', 0.3)  # Reduced from 0.8
         
-        self.kp_distance = rospy.get_param('~kp_distance', 1.2)
+        self.kp_distance = rospy.get_param('~kp_distance', 1.5)
         self.ki_distance = rospy.get_param('~ki_distance', 0.08)
         self.kd_distance = rospy.get_param('~kd_distance', 0.3)
         
@@ -68,9 +68,9 @@ class EnhancedMotorController:
         self.centering_mode = rospy.get_param('~centering_mode', True)  # Enable centering
 
         # More aggressive lateral control for centering
-        self.kp_lateral_centering = rospy.get_param('~kp_lateral_centering', 1.8)  # Reduced from 3.5
-        self.ki_lateral_centering = rospy.get_param('~ki_lateral_centering', 0.05)  # Reduced from 0.2
-        self.kd_lateral_centering = rospy.get_param('~kd_lateral_centering', 0.4)   # Reduced from 1.2
+        self.kp_lateral_centering = rospy.get_param('~kp_lateral_centering', 2.2)  # Reduced from 3.5
+        self.ki_lateral_centering = rospy.get_param('~ki_lateral_centering', 0.08)  # Reduced from 0.2
+        self.kd_lateral_centering = rospy.get_param('~kd_lateral_centering', 0.6)   # Reduced from 1.2
 
 
         # Distance-based speed scaling
@@ -78,8 +78,8 @@ class EnhancedMotorController:
         self.centering_threshold = rospy.get_param('~centering_threshold', 0.15)  # Consider "centered" within ±0.15
 
         # Anti-fidgeting parameters
-        self.lateral_deadband = rospy.get_param('~lateral_deadband', 0.08)  # Ignore small errors
-        self.min_angular_vel = rospy.get_param('~min_angular_vel', 0.1)     # Minimum turn command
+        self.lateral_deadband = rospy.get_param('~lateral_deadband', 0.03)  # Ignore small errors
+        self.min_angular_vel = rospy.get_param('~min_angular_vel', 0.05)     # Minimum turn command
         self.smoothing_factor = rospy.get_param('~smoothing_factor', 0.7)   # Output smoothing
 
         #Previous command for smoothing
@@ -157,9 +157,9 @@ class EnhancedMotorController:
 
     
     def calculate_enhanced_control_commands(self):
-        """Enhanced PID control with improved algorithms"""
+        """Enhanced PID control with anti-fidgeting measures"""
         dt = 0.05  # 20 Hz control loop
-        
+
         # Use centering-specific PID gains if enabled
         if self.centering_mode:
             kp_lat = self.kp_lateral_centering
@@ -170,13 +170,18 @@ class EnhancedMotorController:
             ki_lat = self.ki_lateral
             kd_lat = self.kd_lateral
 
-        # Lateral control (steering) - MORE AGGRESSIVE for centering
+        # Lateral control (steering)
         lateral_error = self.target_position.x  # -1 to 1, 0 is center
+
         # Apply deadband - ignore small errors
         if abs(lateral_error) < self.lateral_deadband:
             lateral_error = 0.0
             self.lateral_error_integral *= 0.9  # Decay integral when in deadband
-        
+
+        # PID calculations (CORRECT ORDER)
+        self.lateral_error_integral += lateral_error * dt
+        lateral_error_derivative = (lateral_error - self.lateral_error_previous) / dt
+
         # Anti-windup for integral term
         self.lateral_error_integral = np.clip(self.lateral_error_integral, -0.3, 0.3)
 
@@ -188,13 +193,13 @@ class EnhancedMotorController:
         if abs(angular_vel) < self.min_angular_vel:
             angular_vel = 0.0
 
-        self.lateral_error_previous = lateral_error
-        
-        # Distance control 
+        self.lateral_error_previous = lateral_error  # Update AFTER using it
+
+        # Distance control (forward/backward)
         distance_error = self.current_distance - self.target_distance
         self.distance_error_integral += distance_error * dt
         distance_error_derivative = (distance_error - self.distance_error_previous) / dt
-        
+
         # Anti-windup
         self.distance_error_integral = np.clip(self.distance_error_integral, -1.0, 1.0)
 
@@ -203,10 +208,10 @@ class EnhancedMotorController:
                      self.kd_distance * distance_error_derivative)
 
         self.distance_error_previous = distance_error
-        
+
         # GENTLE speed scaling (less aggressive)
         if abs(self.target_position.x) > self.centering_threshold:
-            speed_factor = max(0.6, 1.0 - 0.5 * abs(self.target_position.x))  # Less aggressive
+            speed_factor = max(0.6, 1.0 - 0.5 * abs(self.target_position.x))
         else:
             speed_factor = 1.0 - 0.2 * abs(self.target_position.x)
 
@@ -215,13 +220,14 @@ class EnhancedMotorController:
         # SMOOTH OUTPUT - blend with previous commands
         angular_vel = self.smoothing_factor * self.prev_angular_vel + (1 - self.smoothing_factor) * angular_vel
         linear_vel = self.smoothing_factor * self.prev_linear_vel + (1 - self.smoothing_factor) * linear_vel
-    
+
         # Store for next iteration
         self.prev_angular_vel = angular_vel
         self.prev_linear_vel = linear_vel
-        
+
         return linear_vel, angular_vel
-    
+
+
     def track_performance(self, linear_vel, angular_vel):
         """Track control performance metrics"""
         control_data = {
