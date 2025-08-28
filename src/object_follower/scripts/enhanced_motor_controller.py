@@ -86,8 +86,8 @@ class EnhancedMotorController:
         self.prev_angular_vel = 0.0
         self.prev_linear_vel = 0.0
 
-        self.stop_distance = rospy.get_param('~stop_distance', 0.15)  # Stop when < 30cm
-        self.slow_distance = rospy.get_param('~slow_distance', 0.3)   # Slow when < 60cm
+        self.stop_distance = rospy.get_param('~stop_distance', 0.3)  # Stop when < 30cm
+        self.slow_distance = rospy.get_param('~slow_distance', 0.6)   # Slow when < 60cm
         
         rospy.loginfo("Enhanced Motor Controller - DuckieBot deployment ready")
     
