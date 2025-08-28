@@ -64,6 +64,18 @@ class EnhancedMotorController:
         
         # Control loop timer
         self.control_timer = rospy.Timer(rospy.Duration(0.05), self.control_loop)  # 20 Hz
+
+        # Enhanced PID parameters for centering mode
+        self.centering_mode = rospy.get_param('~centering_mode', True)  # Enable centering
+
+        # More aggressive lateral control for centering
+        self.kp_lateral_centering = rospy.get_param('~kp_lateral_centering', 3.5)  # Higher than current
+        self.ki_lateral_centering = rospy.get_param('~ki_lateral_centering', 0.2)
+        self.kd_lateral_centering = rospy.get_param('~kd_lateral_centering', 1.2)
+
+        # Distance-based speed scaling
+        self.min_speed_factor = rospy.get_param('~min_speed_factor', 0.3)  # Minimum speed when turning
+        self.centering_threshold = rospy.get_param('~centering_threshold', 0.15)  # Consider "centered" within ±0.15
         
         rospy.loginfo("Enhanced Motor Controller - DuckieBot deployment ready")
     
@@ -98,35 +110,69 @@ class EnhancedMotorController:
             self.stop_robot()
             return
         
+        # Adaptive PID tuning every few cycles
+        if len(self.control_history) % 10 == 0:
+            self.adaptive_pid_tuning()
+        
         # Calculate control commands
         linear_vel, angular_vel = self.calculate_enhanced_control_commands()
         
-        # Apply velocity limits
+        # Apply velocity limits (higher angular limits for faster turning)
         linear_vel = np.clip(linear_vel, -self.max_speed, self.max_speed)
-        angular_vel = np.clip(angular_vel, -2.0, 2.0)
+        angular_vel = np.clip(angular_vel, -3.0, 3.0)  # Increased from 2.0 to 3.0
         
         # Publish commands to all topics
         self.publish_velocity_commands(linear_vel, angular_vel)
         
         # Track performance
         self.track_performance(linear_vel, angular_vel)
+
+    def adaptive_pid_tuning(self):
+        """Dynamically adjust PID gains based on performance"""
+        if len(self.control_history) < 20:
+            return
+
+        recent_errors = [abs(d['lateral_error']) for d in self.control_history[-10:]]
+        avg_error = np.mean(recent_errors)
+
+        # If consistently off-center, increase gains
+        if avg_error > self.centering_threshold * 1.5:
+            self.kp_lateral_centering = min(5.0, self.kp_lateral_centering * 1.1)
+            rospy.loginfo_throttle(5, f"Increased centering gain to {self.kp_lateral_centering:.2f}")
+
+        # If oscillating, reduce gains
+        error_changes = [abs(recent_errors[i] - recent_errors[i-1]) for i in range(1, len(recent_errors))]
+        if np.mean(error_changes) > 0.3:
+            self.kp_lateral_centering = max(2.0, self.kp_lateral_centering * 0.95)
+            self.kd_lateral_centering = min(2.0, self.kd_lateral_centering * 1.1)
+
     
     def calculate_enhanced_control_commands(self):
         """Enhanced PID control with improved algorithms"""
         dt = 0.05  # 20 Hz control loop
         
-        # Lateral control (steering)
+        # Use centering-specific PID gains if enabled
+        if self.centering_mode:
+            kp_lat = self.kp_lateral_centering
+            ki_lat = self.ki_lateral_centering 
+            kd_lat = self.kd_lateral_centering
+        else:
+            kp_lat = self.kp_lateral
+            ki_lat = self.ki_lateral
+            kd_lat = self.kd_lateral
+
+        # Lateral control (steering) - MORE AGGRESSIVE for centering
         lateral_error = self.target_position.x  # -1 to 1, 0 is center
         self.lateral_error_integral += lateral_error * dt
         lateral_error_derivative = (lateral_error - self.lateral_error_previous) / dt
         
         # Anti-windup for integral term
         self.lateral_error_integral = np.clip(self.lateral_error_integral, -0.5, 0.5)
-        
-        angular_vel = -(self.kp_lateral * lateral_error + 
-                       self.ki_lateral * self.lateral_error_integral + 
-                       self.kd_lateral * lateral_error_derivative)
-        
+
+        angular_vel = -(kp_lat * lateral_error + 
+                       ki_lat * self.lateral_error_integral + 
+                       kd_lat * lateral_error_derivative)
+
         self.lateral_error_previous = lateral_error
         
         # Distance control (forward/backward)
@@ -136,16 +182,26 @@ class EnhancedMotorController:
         
         # Anti-windup
         self.distance_error_integral = np.clip(self.distance_error_integral, -1.0, 1.0)
-        
+
         linear_vel = (self.kp_distance * distance_error + 
                      self.ki_distance * self.distance_error_integral + 
                      self.kd_distance * distance_error_derivative)
-        
+
         self.distance_error_previous = distance_error
         
-        # Adaptive speed based on lateral error (slow down when turning)
-        speed_factor = 1.0 - 0.5 * abs(lateral_error)
-        linear_vel *= speed_factor
+        # ENHANCED: Dynamic speed scaling based on centering accuracy
+        if abs(lateral_error) > self.centering_threshold:
+            # Ball is not centered - prioritize turning over forward movement
+            speed_factor = max(self.min_speed_factor, 1.0 - 2.0 * abs(lateral_error))
+            linear_vel *= speed_factor
+            
+            # Boost angular velocity when far from center (faster turns)
+            angular_boost = 1.0 + abs(lateral_error)
+            angular_vel *= angular_boost
+        else:
+            # Ball is centered - allow normal forward movement
+            speed_factor = 1.0 - 0.3 * abs(lateral_error)  # Less aggressive reduction
+            linear_vel *= speed_factor
         
         return linear_vel, angular_vel
     
@@ -171,27 +227,32 @@ class EnhancedMotorController:
             self.performance_pub.publish(Float32(performance_score))
     
     def calculate_performance_score(self):
-        """Calculate performance score (0-100)"""
+        """Calculate performance score with centering emphasis"""
         if not self.control_history:
             return 0.0
-        
-        recent_data = self.control_history[-20:]  # Last 20 measurements
-        
+
+        recent_data = self.control_history[-20:]
+
         # Calculate metrics
         lateral_errors = [abs(d['lateral_error']) for d in recent_data]
         distance_errors = [d['distance_error'] for d in recent_data]
         velocity_changes = [abs(recent_data[i]['linear_vel'] - recent_data[i-1]['linear_vel']) 
                            for i in range(1, len(recent_data))]
-        
-        # Score components (0-100 each)
-        accuracy_score = max(0, 100 - np.mean(lateral_errors) * 200)  # Lateral accuracy
-        distance_score = max(0, 100 - np.mean(distance_errors) * 100)  # Distance accuracy
-        smoothness_score = max(0, 100 - np.mean(velocity_changes) * 500)  # Control smoothness
-        
-        # Weighted average
-        overall_score = (0.4 * accuracy_score + 0.4 * distance_score + 0.2 * smoothness_score)
-        
+
+        # ENHANCED: Centering-focused scoring
+        centering_score = max(0, 100 - np.mean(lateral_errors) * 300)  # Higher penalty for off-center
+        distance_score = max(0, 100 - np.mean(distance_errors) * 100)
+        smoothness_score = max(0, 100 - np.mean(velocity_changes) * 400)
+
+        # Check if consistently centered
+        centered_count = sum(1 for err in lateral_errors[-10:] if abs(err) < self.centering_threshold)
+        consistency_bonus = (centered_count / 10) * 20  # Up to 20 bonus points
+
+        # Weighted average emphasizing centering
+        overall_score = (0.6 * centering_score + 0.25 * distance_score + 0.15 * smoothness_score + consistency_bonus)
+
         return min(100.0, max(0.0, overall_score))
+
     
     def publish_velocity_commands(self, linear_vel, angular_vel):
         """Publish velocity commands to all supported topics"""

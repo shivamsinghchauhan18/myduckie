@@ -16,6 +16,48 @@ from std_msgs.msg import Bool, Float32, String
 from cv_bridge import CvBridge
 import threading
 
+class PIDController:
+    def __init__(self, kp, ki, kd, setpoint=0.0):
+        self.kp = kp  # Proportional gain
+        self.ki = ki  # Integral gain  
+        self.kd = kd  # Derivative gain
+        self.setpoint = setpoint  # Target value (0 for center)
+        
+        self.prev_error = 0.0
+        self.integral = 0.0
+        self.last_time = None
+        
+    def update(self, current_value, dt=None):
+        """Calculate PID output"""
+        if dt is None:
+            dt = 0.1  # Default time step
+            
+        # Calculate error (distance from center)
+        error = self.setpoint - current_value
+        
+        # Proportional term
+        proportional = self.kp * error
+        
+        # Integral term (accumulated error over time)
+        self.integral += error * dt
+        integral_term = self.ki * self.integral
+        
+        # Derivative term (rate of error change)
+        derivative = self.kd * (error - self.prev_error) / dt if dt > 0 else 0
+        
+        # Calculate output
+        output = proportional + integral_term + derivative
+        
+        # Save for next iteration
+        self.prev_error = error
+        
+        return output
+    
+    def reset(self):
+        """Reset PID controller state"""
+        self.prev_error = 0.0
+        self.integral = 0.0
+
 
 class EnhancedObjectDetector:
     def __init__(self):
@@ -25,8 +67,12 @@ class EnhancedObjectDetector:
         # Initialize CV bridge
         self.bridge = CvBridge()
 
+        # PID Controllers for centering the ball
         self.session = requests.Session()
         self.session.headers.update({'Connection': 'keep-alive'})
+
+        self.x_pid = PIDController(kp=1.0, ki=0.1, kd=0.05, setpoint=0.0)
+        self.y_pid = PIDController(kp=0.8, ki=0.05, kd=0.03, setpoint=0.0)
         
         # Publishers
         self.target_pub = rospy.Publisher('/object_follower/target_position', Point, queue_size=1)
@@ -34,6 +80,7 @@ class EnhancedObjectDetector:
         self.distance_pub = rospy.Publisher('/object_follower/target_distance', Float32, queue_size=1)
         self.debug_image_pub = rospy.Publisher('/object_follower/debug_image', Image, queue_size=1)
         self.detection_info_pub = rospy.Publisher('/object_follower/detection_info', String, queue_size=1)
+        self.control_pub = rospy.Publisher('/object_follower/control_cmd', Point, queue_size=1)
         
         # Subscribers - Handle both local and DuckieBot camera topics
         self.image_sub = rospy.Subscriber('/camera/image_raw', Image, self.image_callback, 
@@ -75,6 +122,7 @@ class EnhancedObjectDetector:
         self.detection_count = 0
         self.api_failure_count = 0
         self.start_time = rospy.Time.now()
+        self.last_control_time = rospy.Time.now()
 
         self.last_process_time = 0
         self.min_process_interval = 0.1  # Process at most 10 FPS
@@ -181,10 +229,32 @@ class EnhancedObjectDetector:
                     measurement = np.array([[center_x], [center_y]], dtype=np.float32)
                     self.kalman.correct(measurement)
 
-                    # Use API's normalized coordinates directly
+                    # Calculate PID control for centering
+                    current_time = rospy.Time.now()
+                    dt = (current_time - self.last_control_time).to_sec()
+                    self.last_control_time = current_time
+
+                    # Get normalized position (-1 to 1, where 0 is center)
+                    x_position = result['target_position_x']  # Current X position
+                    y_position = result['target_position_y']  # Current Y position
+
+                    # Calculate PID outputs (how much to turn/move)
+                    x_control = self.x_pid.update(x_position, dt)  # Left/Right control
+                    y_control = self.y_pid.update(y_position, dt)  # Up/Down control (if needed)
+
+                    # Create control command
+                    control_cmd = Point()
+                    control_cmd.x = x_control      # Turning speed (left/right)
+                    control_cmd.y = 0.0           # Forward speed (can add distance-based control)
+                    control_cmd.z = y_control     # Tilt control (if your robot supports it)
+                    
+                    # Publish control command for robot movement
+                    self.control_pub.publish(control_cmd)
+
+                    # Also publish original detection for other nodes
                     target_point = Point()
-                    target_point.x = result['target_position_x']
-                    target_point.y = result['target_position_y']
+                    target_point.x = x_position
+                    target_point.y = y_position
                     target_point.z = result['estimated_distance']
 
                     # Publish target information
