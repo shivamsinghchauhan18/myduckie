@@ -14,6 +14,9 @@ from sensor_msgs.msg import Image, CompressedImage
 from geometry_msgs.msg import Point
 from std_msgs.msg import Bool, Float32, String
 from cv_bridge import CvBridge
+import threading
+
+session = requests.Session()
 
 class EnhancedObjectDetector:
     def __init__(self):
@@ -46,7 +49,7 @@ class EnhancedObjectDetector:
         
         # API Configuration
         self.api_url = rospy.get_param('~api_url', 'http://192.168.1.111:8000/detect')  # API endpoint
-        self.api_timeout = rospy.get_param('~api_timeout', 1)  # seconds
+        self.api_timeout = rospy.get_param('~api_timeout', 0.5)  # seconds
         
         # Enhanced tracking parameters
         self.last_known_position = None
@@ -111,7 +114,7 @@ class EnhancedObjectDetector:
             
             # Send to API
             files = {'file': ('image.jpg', buffer.tobytes(), 'image/jpeg')}
-            response = requests.post(self.api_url, files=files, timeout=self.api_timeout)
+            response = self.session.post(self.api_url, files=files, timeout=self.api_timeout)
             
             if response.status_code == 200:
                 return response.json()
@@ -129,7 +132,7 @@ class EnhancedObjectDetector:
             return None
     
     def detect_with_api(self, image):
-        """Use API for detection instead of local processing"""
+        """Use API for detection with asynchronous threaded processing"""
 
         current_time = rospy.Time.now().to_sec()
         if current_time - self.last_process_time < self.min_process_interval:
@@ -138,10 +141,17 @@ class EnhancedObjectDetector:
         if hasattr(self, '_processing') and self._processing:
             rospy.loginfo_throttle(1, "Skipping frame - API still processing")
             return
-    
+
         self._processing = True
         self.last_process_time = current_time
 
+        # Process asynchronously in separate thread (non-blocking)
+        thread = threading.Thread(target=self._async_detect, args=(image.copy(),))
+        thread.daemon = True  # Dies when main thread dies
+        thread.start()
+
+    def _async_detect(self, image):
+        """Asynchronous detection processing in separate thread"""
         try:
             height, width = image.shape[:2]
             if width > 640:
@@ -149,50 +159,48 @@ class EnhancedObjectDetector:
                 new_width = int(width * scale)
                 new_height = int(height * scale)
                 image = cv2.resize(image, (new_width, new_height))
-
+    
             result = self.call_detection_api(image)
-
+    
             if result and result.get('target_found', False):
-                # Get best detection from API
                 best_detection = result.get('best_detection')
                 if best_detection:
                     center_x = best_detection['center_x']
                     center_y = best_detection['center_y']
                     confidence = best_detection['confidence']
-
+    
                     # Kalman filter prediction and update
                     if not self.kalman_initialized:
                         self.kalman.statePre = np.array([center_x, center_y, 0, 0], dtype=np.float32)
                         self.kalman.statePost = np.array([center_x, center_y, 0, 0], dtype=np.float32)
                         self.kalman_initialized = True
-
-                    # Predict and update Kalman filter
+    
                     prediction = self.kalman.predict()
                     measurement = np.array([[center_x], [center_y]], dtype=np.float32)
                     self.kalman.correct(measurement)
-
+    
                     # Use API's normalized coordinates directly
                     target_point = Point()
                     target_point.x = result['target_position_x']
                     target_point.y = result['target_position_y']
                     target_point.z = result['estimated_distance']
-
+    
                     # Publish target information
                     self.target_pub.publish(target_point)
                     self.distance_pub.publish(Float32(result['estimated_distance']))
                     self.target_found_pub.publish(Bool(True))
-
+    
                     # Update tracking
                     self.last_known_position = target_point
                     self.tracking_confidence = confidence
                     self.consecutive_detections += 1
                     self.tracking_loss_count = 0
                     self.detection_count += 1
-
+    
                     # Publish detection info
                     info_msg = f"Method: YOLOv8_API, Confidence: {confidence:.2f}, Distance: {result['estimated_distance']:.2f}m"
                     self.detection_info_pub.publish(String(info_msg))
-
+    
             else:
                 # Handle tracking loss or API failure
                 self.tracking_loss_count += 1
@@ -204,13 +212,12 @@ class EnhancedObjectDetector:
                     # Use prediction if recently lost and Kalman is initialized
                     if self.kalman_initialized:
                         prediction = self.kalman.predict()
-                        # Create debug image showing prediction
                         debug_image = image.copy()
                         cv2.circle(debug_image, (int(prediction[0]), int(prediction[1])), 
                                   10, (255, 255, 0), 2)
                         cv2.putText(debug_image, "PREDICTED", (int(prediction[0]), int(prediction[1])-20), 
                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
-
+    
                         try:
                             debug_msg = self.bridge.cv2_to_imgmsg(debug_image, "bgr8")
                             self.debug_image_pub.publish(debug_msg)
@@ -221,7 +228,8 @@ class EnhancedObjectDetector:
         
         finally:
             self._processing = False
-    
+
+
     def run(self):
         rospy.spin()
 
