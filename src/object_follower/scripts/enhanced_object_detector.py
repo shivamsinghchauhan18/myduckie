@@ -29,9 +29,16 @@ class EnhancedObjectDetector:
         self.debug_image_pub = rospy.Publisher('/object_follower/debug_image', Image, queue_size=1)
         self.detection_info_pub = rospy.Publisher('/object_follower/detection_info', String, queue_size=1)
         
-        # Subscribers
+        # Subscribers - Handle both local and DuckieBot camera topics
         self.image_sub = rospy.Subscriber('/camera/image_raw', Image, self.image_callback)
-        self.compressed_image_sub = rospy.Subscriber('/camera_node/image/compressed', CompressedImage, self.compressed_image_callback)
+        
+        # DuckieBot-specific topic (with robot namespace)
+        robot_name = rospy.get_param('~robot_name', 'blueduckie')  # Get robot name
+        compressed_topic = f"/{robot_name}/camera_node/image/compressed"
+        self.compressed_image_sub = rospy.Subscriber(compressed_topic, CompressedImage, self.compressed_image_callback)
+        
+        # Fallback for generic topic
+        self.compressed_fallback_sub = rospy.Subscriber('/camera_node/image/compressed', CompressedImage, self.compressed_image_callback)
         
         # Parameters
         self.detection_method = rospy.get_param('~detection_method', 'color')  # 'color', 'contour', 'template'

@@ -1,8 +1,0 @@
-prefix=/home/sumeettt/duckie_ws/install
-
-Name: duckietown_msgs
-Description: Description of duckietown_msgs
-Version: 1.0.0
-Cflags: -I${prefix}/include
-Libs: -L${prefix}/lib 
-Requires: message_runtime std_msgs geometry_msgs sensor_msgs

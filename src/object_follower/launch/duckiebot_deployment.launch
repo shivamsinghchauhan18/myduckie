@@ -4,11 +4,16 @@
   <!-- Parameters -->
   <param name="use_sim_time" value="false"/>
   
+  <!-- Auto-detect robot name or use default -->
+  <arg name="robot_name" default="blueduckie"/>
+  
   <!-- Enhanced Object Detection Node -->
   <node name="enhanced_object_detector" pkg="object_follower" type="enhanced_object_detector.py" output="screen">
     <param name="detection_method" value="color"/>
     <param name="target_color" value="red"/>
-    <!-- Handles both compressed (DuckieBot) and raw (local) images automatically -->
+    <param name="robot_name" value="$(arg robot_name)"/>
+    <!-- Remap to robot-specific camera topic -->
+    <remap from="/camera_node/image/compressed" to="/$(arg robot_name)/camera_node/image/compressed"/>
   </node>
   
   <!-- Enhanced Motor Controller Node - DuckieBot Optimized -->
@@ -24,6 +29,9 @@
     <param name="kp_distance" value="0.6"/>
     <param name="ki_distance" value="0.02"/>
     <param name="kd_distance" value="0.1"/>
+    <!-- Remap to robot-specific topics -->
+    <remap from="/car_cmd_switch_node/cmd" to="/$(arg robot_name)/car_cmd_switch_node/cmd"/>
+    <remap from="/wheels_driver_node/wheels_cmd" to="/$(arg robot_name)/wheels_driver_node/wheels_cmd"/>
   </node>
   
   <!-- Obstacle Detector Node -->

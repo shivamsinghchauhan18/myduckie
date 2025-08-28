@@ -1,2 +1,0 @@
-set(duckietown_msgs_MESSAGE_FILES "/home/sumeettt/duckie_ws/src/duckietown_msgs/msg/Twist2DStamped.msg;/home/sumeettt/duckie_ws/src/duckietown_msgs/msg/WheelsCmdStamped.msg;/home/sumeettt/duckie_ws/src/duckietown_msgs/msg/BoolStamped.msg;/home/sumeettt/duckie_ws/src/duckietown_msgs/msg/Pose2DStamped.msg;/home/sumeettt/duckie_ws/src/duckietown_msgs/msg/FSMState.msg;/home/sumeettt/duckie_ws/src/duckietown_msgs/msg/LanePose.msg;/home/sumeettt/duckie_ws/src/duckietown_msgs/msg/CarControl.msg")
-set(duckietown_msgs_SERVICE_FILES "")
