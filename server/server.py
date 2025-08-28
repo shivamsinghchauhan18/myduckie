@@ -58,7 +58,7 @@ async def detect_tennis_ball(file: UploadFile = File(...)):
         return DetectionResponse(target_found=False, detections=[])
     
     # Run YOLOv8 inference
-    results = model(image, conf=0.3)  # confidence threshold
+    results = model(image, conf=0.5, imgsz=416)  # confidence threshold
     
     detections = []
     best_detection = None
@@ -96,23 +96,22 @@ async def detect_tennis_ball(file: UploadFile = File(...)):
     target_position_y = None
     estimated_distance = None
     
-    if target_found and best_detection:
-        img_height, img_width = image.shape[:2]
-        target_position_x = (best_detection.center_x - img_width // 2) / (img_width // 2)
-        target_position_y = (best_detection.center_y - img_height // 2) / (img_height // 2)
-        estimated_distance = estimate_distance(best_detection.width)
-        cv2.rectangle(image, (best_detection.x1, best_detection.y1), 
-                     (best_detection.x2, best_detection.y2), (0, 255, 0), 2)
-        cv2.circle(image, (best_detection.center_x, best_detection.center_y), 5, (0, 0, 255), -1)
-        cv2.putText(image, f"Dist: {estimated_distance:.2f}m", 
-                   (best_detection.x1, best_detection.y1-30), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        cv2.putText(image, f"Conf: {best_detection.confidence:.2f}", 
-                   (best_detection.x1, best_detection.y1-10), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
-        # Display the marked detection in a persistent window
-        cv2.imshow("Detection Stream (Server Side)", image)
-        cv2.waitKey(1)
+    img_height, img_width = image.shape[:2]
+    target_position_x = (best_detection.center_x - img_width // 2) / (img_width // 2)
+    target_position_y = (best_detection.center_y - img_height // 2) / (img_height // 2)
+    estimated_distance = estimate_distance(best_detection.width)
+    cv2.rectangle(image, (best_detection.x1, best_detection.y1), 
+                 (best_detection.x2, best_detection.y2), (0, 255, 0), 2)
+    cv2.circle(image, (best_detection.center_x, best_detection.center_y), 5, (0, 0, 255), -1)
+    cv2.putText(image, f"Dist: {estimated_distance:.2f}m", 
+               (best_detection.x1, best_detection.y1-30), 
+               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+    cv2.putText(image, f"Conf: {best_detection.confidence:.2f}", 
+               (best_detection.x1, best_detection.y1-10), 
+               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+    # Display the marked detection in a persistent window
+    cv2.imshow("Detection Stream (Server Side)", image)
+    cv2.waitKey(1)
 
     
     # Encode debug image as base64 (optional, for debugging)

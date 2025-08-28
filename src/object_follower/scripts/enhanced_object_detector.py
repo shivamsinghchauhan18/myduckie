@@ -42,7 +42,7 @@ class EnhancedObjectDetector:
                                            queue_size=1, buff_size=2**24)
         
         # Fallback for generic topic
-        self.compressed_fallback_sub = rospy.Subscriber('/camera_node/image/compressed', CompressedImage, self.compressed_image_callback)
+        self.compressed_fallback_sub = rospy.Subscriber('/camera_node/image/compressed', CompressedImage, self.compressed_image_callback, queue_size=1, buff_size=2**24)
         
         # API Configuration
         self.api_url = rospy.get_param('~api_url', 'http://192.168.1.111:8000/detect')  # API endpoint
@@ -104,7 +104,7 @@ class EnhancedObjectDetector:
         """Call the YOLOv8 detection API"""
         try:
             # Encode image as JPEG
-            _, buffer = cv2.imencode('.jpg', image)
+            _, buffer = cv2.imencode('.jpg', image, [cv2.IMWRITE_JPEG_QUALITY, 80])
             
             # Send to API
             files = {'file': ('image.jpg', buffer.tobytes(), 'image/jpeg')}
@@ -128,11 +128,16 @@ class EnhancedObjectDetector:
     def detect_with_api(self, image):
         """Use API for detection instead of local processing"""
 
+        current_time = rospy.Time.now().to_sec()
+        if current_time - self.last_process_time < self.min_process_interval:
+            return
+
         if hasattr(self, '_processing') and self._processing:
-        rospy.loginfo_throttle(1, "Skipping frame - API still processing")
-        return
+            rospy.loginfo_throttle(1, "Skipping frame - API still processing")
+            return
     
         self._processing = True
+        self.last_process_time = current_time
 
         try:
             height, width = image.shape[:2]
