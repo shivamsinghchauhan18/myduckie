@@ -85,6 +85,9 @@ class EnhancedMotorController:
         #Previous command for smoothing
         self.prev_angular_vel = 0.0
         self.prev_linear_vel = 0.0
+
+        self.stop_distance = rospy.get_param('~stop_distance', 0.15)  # Stop when < 30cm
+        self.slow_distance = rospy.get_param('~slow_distance', 0.3)   # Slow when < 60cm
         
         rospy.loginfo("Enhanced Motor Controller - DuckieBot deployment ready")
     
@@ -122,6 +125,11 @@ class EnhancedMotorController:
         # Adaptive PID tuning every few cycles
         # if len(self.control_history) % 10 == 0:
         #     self.adaptive_pid_tuning()
+
+        if self.current_distance > 0 and self.current_distance < self.stop_distance:
+            rospy.loginfo_throttle(2, f"Ball too close ({self.current_distance:.2f}m)! Stopping.")
+            self.publish_velocity_commands(0.0, 0.0)
+            return
         
         # Calculate control commands
         linear_vel, angular_vel = self.calculate_enhanced_control_commands()
@@ -170,13 +178,26 @@ class EnhancedMotorController:
             ki_lat = self.ki_lateral
             kd_lat = self.kd_lateral
 
+        # DISTANCE-BASED GAIN REDUCTION for close targets
+        distance_factor = 1.0
+        if self.current_distance < 0.5:  # Ball is very close (< 50cm)
+            distance_factor = max(0.3, self.current_distance / 0.5)  # Reduce gains dramatically
+            kp_lat *= distance_factor
+            ki_lat *= distance_factor
+            rospy.loginfo_throttle(2, f"Close ball detected! Reducing gains by factor: {distance_factor:.2f}")
+
         # Lateral control (steering)
         lateral_error = self.target_position.x  # -1 to 1, 0 is center
 
+        # ENHANCED DEADBAND when ball is close
+        close_deadband = self.lateral_deadband
+        if self.current_distance < 0.8:  # Increase deadband when close
+            close_deadband = self.lateral_deadband * (2.0 - self.current_distance)  
+
         # Apply deadband - ignore small errors
-        if abs(lateral_error) < self.lateral_deadband:
+        if abs(lateral_error) < close_deadband:
             lateral_error = 0.0
-            self.lateral_error_integral *= 0.9  # Decay integral when in deadband
+            self.lateral_error_integral *= 0.8  # Decay integral when in deadband
 
         # PID calculations (CORRECT ORDER)
         self.lateral_error_integral += lateral_error * dt
@@ -190,7 +211,11 @@ class EnhancedMotorController:
                        kd_lat * lateral_error_derivative)
 
         # Apply minimum command threshold
-        if abs(angular_vel) < self.min_angular_vel:
+        min_angular_threshold = self.min_angular_vel
+        if self.current_distance < 0.8:
+            min_angular_threshold *= (2.0 - self.current_distance)  # Higher threshold when close
+
+        if abs(angular_vel) < min_angular_threshold:
             angular_vel = 0.0
 
         self.lateral_error_previous = lateral_error  # Update AFTER using it
