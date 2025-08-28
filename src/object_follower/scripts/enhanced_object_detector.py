@@ -70,6 +70,9 @@ class EnhancedObjectDetector:
         self.detection_count = 0
         self.api_failure_count = 0
         self.start_time = rospy.Time.now()
+
+        self.last_process_time = 0
+        self.min_process_interval = 0.1  # Process at most 10 FPS
         
         rospy.loginfo(f"Enhanced Object Detector initialized - Using API: {self.api_url}")
     
