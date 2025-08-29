@@ -6,14 +6,19 @@ import base64
 from pydantic import BaseModel
 from typing import List, Optional
 import atexit
-
+import os
 
 app = FastAPI()
-atexit.register(cv2.destroyAllWindows)
 
+# Video recording variables
+video_writer = None
+video_initialized = False
+video_filename = "detection_stream.avi"
+video_codec = cv2.VideoWriter_fourcc(*'XVID')
+video_fps = 20
 
 # Load your trained YOLOv8 model
-model = YOLO("best.pt")
+model = YOLO("model/best.pt")
 
 # Camera parameters (same as your robot)
 FOCAL_LENGTH = 525.0  # pixels
@@ -39,6 +44,33 @@ class DetectionResponse(BaseModel):
     target_position_y: Optional[float] = None
     estimated_distance: Optional[float] = None
     debug_image_base64: Optional[str] = None
+
+def cleanup_resources():
+    """Clean up video writer and OpenCV windows"""
+    global video_writer
+    
+    if video_writer is not None:
+        video_writer.release()
+        print(f"Video saved to {video_filename}")
+    
+    cv2.destroyAllWindows()
+    print("Detection stream recording stopped and saved.")
+
+# Register cleanup function to be called at program exit
+atexit.register(cleanup_resources)
+
+def write_frame_to_video(frame):
+    """Initialize video writer and write frame to video file"""
+    global video_writer, video_initialized
+    
+    if not video_initialized:
+        height, width = frame.shape[:2]
+        video_writer = cv2.VideoWriter(video_filename, video_codec, video_fps, (width, height))
+        video_initialized = True
+        print(f"Started recording detection stream to {video_filename}")
+    
+    if video_writer is not None:
+        video_writer.write(frame)
 
 def estimate_distance(pixel_width):
     """Estimate distance using camera parameters"""
@@ -110,10 +142,13 @@ async def detect_tennis_ball(file: UploadFile = File(...)):
         cv2.putText(image, f"Conf: {best_detection.confidence:.2f}", 
                    (best_detection.x1, best_detection.y1-10), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
-        # Display the marked detection in a persistent window
-        cv2.imshow("Detection Stream (Server Side)", image)
-        cv2.waitKey(1)
-
+    
+    # Write frame to video file (regardless of detection status)
+    write_frame_to_video(image)
+    
+    # Display the marked detection in a persistent window
+    cv2.imshow("Detection Stream (Server Side)", image)
+    cv2.waitKey(1)
     
     # Encode debug image as base64 (optional, for debugging)
     _, buffer = cv2.imencode('.jpg', image)
