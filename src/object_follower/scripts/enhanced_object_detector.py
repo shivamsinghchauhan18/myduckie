@@ -16,6 +16,10 @@ from std_msgs.msg import Bool, Float32, String
 from cv_bridge import CvBridge
 import threading
 
+API_IP = '172.20.10.3'
+API_PORT = 8000
+API_ENDPOINT = '/detect'
+
 class PIDController:
     def __init__(self, kp, ki, kd, setpoint=0.0):
         self.kp = kp  # Proportional gain
@@ -97,7 +101,7 @@ class EnhancedObjectDetector:
         self.compressed_fallback_sub = rospy.Subscriber('/camera_node/image/compressed', CompressedImage, self.compressed_image_callback, queue_size=1, buff_size=2**24)
         
         # API Configuration
-        self.api_url = rospy.get_param('~api_url', 'http://172.20.10.3:8000/detect')  # API endpoint
+        self.api_url = f"http://{API_IP}:{API_PORT}{API_ENDPOINT}"  # API endpoint
         self.api_timeout = rospy.get_param('~api_timeout', 0.5)  # seconds
         
         # Enhanced tracking parameters
