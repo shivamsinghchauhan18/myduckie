@@ -97,7 +97,7 @@ class EnhancedObjectDetector:
         self.compressed_fallback_sub = rospy.Subscriber('/camera_node/image/compressed', CompressedImage, self.compressed_image_callback, queue_size=1, buff_size=2**24)
         
         # API Configuration
-        self.api_url = rospy.get_param('~api_url', 'http://192.168.1.111:8000/detect')  # API endpoint
+        self.api_url = rospy.get_param('~api_url', 'http://172.20.10.3:8000/detect')  # API endpoint
         self.api_timeout = rospy.get_param('~api_timeout', 0.5)  # seconds
         
         # Enhanced tracking parameters
