@@ -30,7 +30,7 @@ class EnhancedMotorController:
         self.obstacle_sub = rospy.Subscriber('/object_follower/obstacle_detected', Bool, self.obstacle_callback)
         
         # Enhanced control parameters
-        self.max_speed = rospy.get_param('~max_speed', 0.6)
+        self.max_speed = rospy.get_param('~max_speed', 1.0)
         self.target_distance = rospy.get_param('~target_distance', 1.0)
         self.distance_tolerance = rospy.get_param('~distance_tolerance', 0.15)
         
@@ -74,7 +74,7 @@ class EnhancedMotorController:
 
 
         # Distance-based speed scaling
-        self.min_speed_factor = rospy.get_param('~min_speed_factor', 0.3)  # Minimum speed when turning
+        self.min_speed_factor = rospy.get_param('~min_speed_factor', 0.5)  # Minimum speed when turning
         self.centering_threshold = rospy.get_param('~centering_threshold', 0.15)  # Consider "centered" within ±0.15
 
         # Anti-fidgeting parameters
@@ -236,7 +236,7 @@ class EnhancedMotorController:
 
         # GENTLE speed scaling (less aggressive)
         if abs(self.target_position.x) > self.centering_threshold:
-            speed_factor = max(0.6, 1.0 - 0.5 * abs(self.target_position.x))
+            speed_factor = max(0.9, 1.0 - 0.5 * abs(self.target_position.x))
         else:
             speed_factor = 1.0 - 0.2 * abs(self.target_position.x)
 
