@@ -340,6 +340,7 @@ class EnhancedLaneController:
         """Publish velocity commands to DuckieBot car_cmd_switch_node"""
         # DuckieBot Twist2DStamped message
         twist_msg = Twist2DStamped()
+        twist_msg.header = Header()
         twist_msg.header.stamp = rospy.Time.now()
         twist_msg.v = linear_vel
         twist_msg.omega = angular_vel
