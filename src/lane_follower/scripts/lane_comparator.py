@@ -24,10 +24,10 @@ class LaneComparator:
         self.neu_conf = None
         self.fused_conf = None
 
-        # Subscribers
+    # Subscribers
     rospy.Subscriber('/lane_follower/advanced/lane_pose', Point, self._adv_cb)
     rospy.Subscriber('/lane_follower/neural/lane_pose', Point, self._neu_cb)
-        rospy.Subscriber('/lane_follower/fused_lane_pose', PointStamped, self._fused_cb)
+    rospy.Subscriber('/lane_follower/fused_lane_pose', PointStamped, self._fused_cb)
     rospy.Subscriber('/lane_follower/lane_confidence', Float32, self._neu_conf_cb)
     rospy.Subscriber('/lane_follower/fusion_confidence', Float32, self._fused_conf_cb)
 

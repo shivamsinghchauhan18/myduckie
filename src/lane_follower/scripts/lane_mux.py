@@ -45,8 +45,8 @@ class LaneMux:
     rospy.Subscriber('/lane_follower/neural/lane_center', Point, self._mk_cb('neural', 'center'))
     rospy.Subscriber('/lane_follower/neural/lane_angle', Float32, self._mk_cb('neural', 'angle'))
 
-        # Subscriptions for fused (PointStamped)
-        rospy.Subscriber('/lane_follower/fused_lane_pose', PointStamped, self._fused_pose_cb)
+    # Subscriptions for fused (PointStamped)
+    rospy.Subscriber('/lane_follower/fused_lane_pose', PointStamped, self._fused_pose_cb)
 
         # Timer to republish selected source
         self._timer = rospy.Timer(rospy.Duration(0.05), self._publish_selected)  # 20 Hz
@@ -56,7 +56,7 @@ class LaneMux:
     self._srv_neu = rospy.Service('~use_neural', Trigger, self._srv_use_neural)
     self._srv_fus = rospy.Service('~use_fused', Trigger, self._srv_use_fused)
 
-        rospy.loginfo("lane_mux running - source=%s", self.lane_source)
+    rospy.loginfo("lane_mux running - source=%s", self.lane_source)
 
     def _mk_cb(self, src, field):
         def _cb(msg):

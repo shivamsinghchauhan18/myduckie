@@ -25,11 +25,11 @@ class CmdMux:
     rospy.Subscriber('/car_cmd_switch_node/pid/cmd', Twist2DStamped, self._pid_cb)
     rospy.Subscriber('/car_cmd_switch_node/mpc/cmd', Twist2DStamped, self._mpc_cb)
 
-        self.last_pid = None
-        self.last_mpc = None
+    self.last_pid = None
+    self.last_mpc = None
 
-        self.timer = rospy.Timer(rospy.Duration(0.02), self._tick)  # 50 Hz
-        rospy.loginfo("cmd_mux running - source=%s", self.source)
+    self.timer = rospy.Timer(rospy.Duration(0.02), self._tick)  # 50 Hz
+    rospy.loginfo("cmd_mux running - source=%s", self.source)
 
     # Runtime services to switch source
     self._srv_pid = rospy.Service('~use_pid', Trigger, self._srv_use_pid)
