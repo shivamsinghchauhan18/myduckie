@@ -1,0 +1,67 @@
+<launch>
+  <!-- Enhanced launch: preserves existing behavior by default. -->
+  <arg name="robot_name" default="blueduckie"/>
+  <arg name="use_neural_detection" default="false"/>
+  <arg name="use_sensor_fusion" default="false"/>
+  <arg name="use_mpc_control" default="false"/>
+
+  <!-- Advanced Lane Detector (existing) → publish to .advanced topics -->
+  <node name="advanced_lane_detector" pkg="lane_follower" type="advanced_lane_detector.py" output="screen">
+    <param name="robot_name" value="$(arg robot_name)"/>
+    <remap from="/camera_node/image/compressed" to="/$(arg robot_name)/camera_node/image/compressed"/>
+    <remap from="/lane_follower/lane_pose" to="/lane_follower/lane_pose.advanced"/>
+    <remap from="/lane_follower/lane_found" to="/lane_follower/lane_found.advanced"/>
+    <remap from="/lane_follower/lane_center" to="/lane_follower/lane_center.advanced"/>
+    <remap from="/lane_follower/lane_angle" to="/lane_follower/lane_angle.advanced"/>
+  </node>
+
+  <!-- Enhanced PID Controller (existing) → publish to .pid cmd -->
+  <node name="enhanced_lane_controller" pkg="lane_follower" type="enhanced_lane_controller.py" output="screen">
+    <remap from="/car_cmd_switch_node/cmd" to="/car_cmd_switch_node/cmd.pid"/>
+  </node>
+
+  <!-- Lane Obstacle Detector (unchanged topics) -->
+  <node name="lane_obstacle_detector" pkg="lane_follower" type="lane_obstacle_detector.py" output="screen"/>
+
+  <!-- Monitors (fixed) -->
+  <node name="lane_performance_monitor" pkg="lane_follower" type="lane_performance_monitor.py" output="screen"/>
+  <node name="lane_system_monitor" pkg="lane_follower" type="lane_system_monitor.py" output="screen"/>
+  <node name="lane_comparator" pkg="lane_follower" type="lane_comparator.py" output="screen"/>
+
+  <!-- Optional Neural Lane Detector (shadow) → .neural topics -->
+  <group if="$(arg use_neural_detection)">
+    <node name="neural_lane_detector" pkg="lane_follower" type="neural_lane_detector.py" output="screen">
+      <param name="robot_name" value="$(arg robot_name)"/>
+      <remap from="/camera_node/image/compressed" to="/$(arg robot_name)/camera_node/image/compressed"/>
+      <remap from="/lane_follower/lane_pose" to="/lane_follower/lane_pose.neural"/>
+      <remap from="/lane_follower/lane_found" to="/lane_follower/lane_found.neural"/>
+      <remap from="/lane_follower/lane_center" to="/lane_follower/lane_center.neural"/>
+      <remap from="/lane_follower/lane_angle" to="/lane_follower/lane_angle.neural"/>
+    </node>
+  </group>
+
+  <!-- Optional Sensor Fusion (publishes fused_lane_pose) -->
+  <group if="$(arg use_sensor_fusion)">
+    <node name="sensor_fusion_system" pkg="lane_follower" type="sensor_fusion_system.py" output="screen"/>
+  </group>
+
+  <!-- Lane Mux (always on) selects source; default advanced -->
+  <node name="lane_mux" pkg="lane_follower" type="lane_mux.py" output="screen">
+    <param name="lane_source" value="advanced"/>
+    <param name="robot_name" value="$(arg robot_name)"/>
+  </node>
+
+  <!-- Optional MPC Controller (shadow) → .mpc cmd -->
+  <group if="$(arg use_mpc_control)">
+    <node name="mpc_lane_controller" pkg="lane_follower" type="mpc_lane_controller.py" output="screen">
+      <remap from="/car_cmd_switch_node/cmd" to="/car_cmd_switch_node/cmd.mpc"/>
+    </node>
+  </group>
+
+  <!-- Command Mux (always on) selects between PID and MPC; default pid -->
+  <node name="cmd_mux" pkg="lane_follower" type="cmd_mux.py" output="screen">
+    <param name="cmd_source" value="pid"/>
+    <param name="robot_name" value="$(arg robot_name)"/>
+  </node>
+
+</launch>

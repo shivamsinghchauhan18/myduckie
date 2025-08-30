@@ -42,5 +42,8 @@ catkin_install_python(PROGRAMS
   scripts/sensor_fusion_system.py
   scripts/adaptive_learning_system.py
   scripts/lane_obstacle_detector.py
+  scripts/lane_mux.py
+  scripts/cmd_mux.py
+  scripts/lane_comparator.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
