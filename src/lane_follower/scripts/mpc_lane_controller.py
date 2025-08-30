@@ -183,6 +183,10 @@ class MPCLaneController:
                 
                 # Publish control commands
                 self.publish_mpc_commands(v_cmd, steering_cmd)
+                rospy.loginfo_throttle(3, f"MPC: Published commands v={v_cmd:.3f}, ω={steering_cmd:.3f}")
+            else:
+                rospy.logwarn_throttle(2, "MPC: No optimal controls found, publishing safe stop")
+                self.publish_safe_stop()
                 
                 # Update state prediction
                 self.current_state = self.vehicle_model.predict_state(

@@ -103,11 +103,13 @@ class ExtendedKalmanFilter:
 class SensorFusionSystem:
     def __init__(self):
         rospy.init_node('sensor_fusion_system', anonymous=True)
+        rospy.loginfo("SensorFusion: Starting initialization...")
         
         # Extended Kalman Filter
         state_dim = 7  # [x, y, theta, v, lateral_offset, heading_error, curvature]
         obs_dim = 3   # Variable based on sensor
         self.ekf = ExtendedKalmanFilter(state_dim, obs_dim)
+        rospy.loginfo("SensorFusion: EKF initialized")
         
         # Publishers
         self.fused_pose_pub = rospy.Publisher('/lane_follower/fused_pose', PoseStamped, queue_size=1)
@@ -116,7 +118,9 @@ class SensorFusionSystem:
         self.fusion_debug_pub = rospy.Publisher('/lane_follower/fusion_debug', Float32MultiArray, queue_size=1)
         
         # Subscribers for different sensors
+        rospy.loginfo("SensorFusion: Setting up subscribers...")
         self.setup_subscribers()
+        rospy.loginfo("SensorFusion: Subscribers set up")
         
         # Disable sensor fusion for now - just pass through lane data
         self.fusion_enabled = False
@@ -134,12 +138,14 @@ class SensorFusionSystem:
         self.last_apriltag_time = None
         
         # Sensor reliability tracking
+        rospy.loginfo("SensorFusion: Initializing sensor health tracking...")
         self.sensor_health = {
             'camera': deque(maxlen=50),
             'imu': deque(maxlen=50),
             'odometry': deque(maxlen=50),
             'apriltag': deque(maxlen=50)
         }
+        rospy.loginfo("SensorFusion: Sensor health tracking initialized")
         
         # Fusion parameters
         self.max_sensor_delay = 0.2  # Maximum acceptable sensor delay (seconds)
