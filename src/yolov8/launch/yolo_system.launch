@@ -1,0 +1,56 @@
+<?xml version="1.0"?>
+<launch>
+    <!-- Server configuration -->
+    <arg name="server_url" default="http://localhost:5000" />
+    <arg name="bot_id" default="duckiebot_01" />
+    <arg name="api_key" default="default_key" />
+    
+    <!-- Model configuration -->
+    <arg name="model_path" default="yolov8n.pt" />
+    <arg name="confidence_threshold" default="0.5" />
+    
+    <!-- Camera configuration -->
+    <arg name="camera_height" default="0.1" />
+    <arg name="camera_angle" default="0.0" />
+    <arg name="image_height" default="480" />
+    <arg name="image_width" default="640" />
+    
+    <!-- YOLOv8 Object Detector -->
+    <node name="yolo_detector" pkg="yolov8" type="yolo_detector.py" output="screen">
+        <param name="server_url" value="$(arg server_url)" />
+        <param name="bot_id" value="$(arg bot_id)" />
+        <param name="model_path" value="$(arg model_path)" />
+        <param name="confidence_threshold" value="$(arg confidence_threshold)" />
+    </node>
+    
+    <!-- Distance Calculator -->
+    <node name="distance_calculator" pkg="yolov8" type="distance_calculator.py" output="screen">
+        <param name="camera_height" value="$(arg camera_height)" />
+        <param name="camera_angle" value="$(arg camera_angle)" />
+        <param name="image_height" value="$(arg image_height)" />
+        <param name="image_width" value="$(arg image_width)" />
+    </node>
+    
+    <!-- Avoidance Controller -->
+    <node name="avoidance_controller" pkg="yolov8" type="avoidance_controller.py" output="screen">
+        <param name="server_url" value="$(arg server_url)" />
+        <param name="bot_id" value="$(arg bot_id)" />
+    </node>
+    
+    <!-- Emergency Recovery -->
+    <node name="emergency_recovery" pkg="yolov8" type="emergency_recovery.py" output="screen">
+        <param name="server_url" value="$(arg server_url)" />
+        <param name="bot_id" value="$(arg bot_id)" />
+    </node>
+    
+    <!-- Safety Monitor -->
+    <node name="safety_monitor" pkg="yolov8" type="safety_monitor.py" output="screen" />
+    
+    <!-- YOLO Client -->
+    <node name="yolo_client" pkg="yolov8" type="yolo_client.py" output="screen">
+        <param name="server_url" value="$(arg server_url)" />
+        <param name="bot_id" value="$(arg bot_id)" />
+        <param name="api_key" value="$(arg api_key)" />
+    </node>
+    
+</launch>

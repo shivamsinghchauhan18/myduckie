@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<launch>
+    <!-- Include lane following system -->
+    <include file="$(find lane_follower)/launch/advanced_lane_following.launch" />
+    
+    <!-- Include AprilTag system -->
+    <include file="$(find myapriltags)/launch/apriltag_system.launch" />
+    
+    <!-- AprilTag Integration Node -->
+    <node name="apriltag_lane_integration" pkg="myapriltags" type="apriltag_lane_integration.py" output="screen" />
+</launch>
