@@ -9,15 +9,15 @@
   <node name="advanced_lane_detector" pkg="lane_follower" type="advanced_lane_detector.py" output="screen">
     <param name="robot_name" value="$(arg robot_name)"/>
     <remap from="/camera_node/image/compressed" to="/$(arg robot_name)/camera_node/image/compressed"/>
-    <remap from="/lane_follower/lane_pose" to="/lane_follower/lane_pose.advanced"/>
-    <remap from="/lane_follower/lane_found" to="/lane_follower/lane_found.advanced"/>
-    <remap from="/lane_follower/lane_center" to="/lane_follower/lane_center.advanced"/>
-    <remap from="/lane_follower/lane_angle" to="/lane_follower/lane_angle.advanced"/>
+  <remap from="/lane_follower/lane_pose" to="/lane_follower/advanced/lane_pose"/>
+  <remap from="/lane_follower/lane_found" to="/lane_follower/advanced/lane_found"/>
+  <remap from="/lane_follower/lane_center" to="/lane_follower/advanced/lane_center"/>
+  <remap from="/lane_follower/lane_angle" to="/lane_follower/advanced/lane_angle"/>
   </node>
 
   <!-- Enhanced PID Controller (existing) → publish to .pid cmd -->
   <node name="enhanced_lane_controller" pkg="lane_follower" type="enhanced_lane_controller.py" output="screen">
-    <remap from="/car_cmd_switch_node/cmd" to="/car_cmd_switch_node/cmd.pid"/>
+  <remap from="/car_cmd_switch_node/cmd" to="/car_cmd_switch_node/pid/cmd"/>
   </node>
 
   <!-- Lane Obstacle Detector (unchanged topics) -->
@@ -33,10 +33,10 @@
     <node name="neural_lane_detector" pkg="lane_follower" type="neural_lane_detector.py" output="screen">
       <param name="robot_name" value="$(arg robot_name)"/>
       <remap from="/camera_node/image/compressed" to="/$(arg robot_name)/camera_node/image/compressed"/>
-      <remap from="/lane_follower/lane_pose" to="/lane_follower/lane_pose.neural"/>
-      <remap from="/lane_follower/lane_found" to="/lane_follower/lane_found.neural"/>
-      <remap from="/lane_follower/lane_center" to="/lane_follower/lane_center.neural"/>
-      <remap from="/lane_follower/lane_angle" to="/lane_follower/lane_angle.neural"/>
+  <remap from="/lane_follower/lane_pose" to="/lane_follower/neural/lane_pose"/>
+  <remap from="/lane_follower/lane_found" to="/lane_follower/neural/lane_found"/>
+  <remap from="/lane_follower/lane_center" to="/lane_follower/neural/lane_center"/>
+  <remap from="/lane_follower/lane_angle" to="/lane_follower/neural/lane_angle"/>
     </node>
   </group>
 
@@ -58,7 +58,7 @@
   <!-- Optional MPC Controller (shadow) → .mpc cmd -->
   <group if="$(arg use_mpc_control)">
     <node name="mpc_lane_controller" pkg="lane_follower" type="mpc_lane_controller.py" output="screen">
-      <remap from="/car_cmd_switch_node/cmd" to="/car_cmd_switch_node/cmd.mpc"/>
+  <remap from="/car_cmd_switch_node/cmd" to="/car_cmd_switch_node/mpc/cmd"/>
     </node>
   </group>
 

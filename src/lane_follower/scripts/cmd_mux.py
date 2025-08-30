@@ -21,9 +21,9 @@ class CmdMux:
         self.pub_cmd = rospy.Publisher('/car_cmd_switch_node/cmd', Twist2DStamped, queue_size=1)
         self.pub_info = rospy.Publisher('/lane_follower/cmd_mux_info', String, queue_size=1)
 
-        # Inputs (remapped by launch):
-        rospy.Subscriber('/car_cmd_switch_node/cmd.pid', Twist2DStamped, self._pid_cb)
-        rospy.Subscriber('/car_cmd_switch_node/cmd.mpc', Twist2DStamped, self._mpc_cb)
+    # Inputs (remapped by launch):
+    rospy.Subscriber('/car_cmd_switch_node/pid/cmd', Twist2DStamped, self._pid_cb)
+    rospy.Subscriber('/car_cmd_switch_node/mpc/cmd', Twist2DStamped, self._mpc_cb)
 
         self.last_pid = None
         self.last_mpc = None

@@ -33,17 +33,17 @@ class LaneMux:
             'fused': {'pose': None}  # fused provides PointStamped pose only
         }
 
-        # Subscriptions for advanced (remapped by launch to .advanced)
-        rospy.Subscriber('/lane_follower/lane_pose.advanced', Point, self._mk_cb('advanced', 'pose'))
-        rospy.Subscriber('/lane_follower/lane_found.advanced', Bool, self._mk_cb('advanced', 'found'))
-        rospy.Subscriber('/lane_follower/lane_center.advanced', Point, self._mk_cb('advanced', 'center'))
-        rospy.Subscriber('/lane_follower/lane_angle.advanced', Float32, self._mk_cb('advanced', 'angle'))
+    # Subscriptions for advanced (remapped by launch to /lane_follower/advanced/*)
+    rospy.Subscriber('/lane_follower/advanced/lane_pose', Point, self._mk_cb('advanced', 'pose'))
+    rospy.Subscriber('/lane_follower/advanced/lane_found', Bool, self._mk_cb('advanced', 'found'))
+    rospy.Subscriber('/lane_follower/advanced/lane_center', Point, self._mk_cb('advanced', 'center'))
+    rospy.Subscriber('/lane_follower/advanced/lane_angle', Float32, self._mk_cb('advanced', 'angle'))
 
-        # Subscriptions for neural (remapped by launch to .neural)
-        rospy.Subscriber('/lane_follower/lane_pose.neural', Point, self._mk_cb('neural', 'pose'))
-        rospy.Subscriber('/lane_follower/lane_found.neural', Bool, self._mk_cb('neural', 'found'))
-        rospy.Subscriber('/lane_follower/lane_center.neural', Point, self._mk_cb('neural', 'center'))
-        rospy.Subscriber('/lane_follower/lane_angle.neural', Float32, self._mk_cb('neural', 'angle'))
+    # Subscriptions for neural (remapped by launch to /lane_follower/neural/*)
+    rospy.Subscriber('/lane_follower/neural/lane_pose', Point, self._mk_cb('neural', 'pose'))
+    rospy.Subscriber('/lane_follower/neural/lane_found', Bool, self._mk_cb('neural', 'found'))
+    rospy.Subscriber('/lane_follower/neural/lane_center', Point, self._mk_cb('neural', 'center'))
+    rospy.Subscriber('/lane_follower/neural/lane_angle', Float32, self._mk_cb('neural', 'angle'))
 
         # Subscriptions for fused (PointStamped)
         rospy.Subscriber('/lane_follower/fused_lane_pose', PointStamped, self._fused_pose_cb)
