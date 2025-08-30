@@ -31,7 +31,7 @@
     <!-- MPC parameters -->
     <param name="mpc_horizon" value="5"/>  <!-- Reduced for stability -->
     <param name="mpc_dt" value="0.2"/>     <!-- Increased for stability -->
-    <param name="target_speed" value="0.2"/> <!-- Reduced for safety -->
+    <param name="target_speed" value="0.15"/> <!-- Further reduced for stability -->
     <!-- Remap to robot-specific topics -->
     <remap from="/car_cmd_switch_node/cmd" to="/$(arg robot_name)/car_cmd_switch_node/cmd"/>
   </node>

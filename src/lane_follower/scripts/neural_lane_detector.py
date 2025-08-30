@@ -164,6 +164,12 @@ class NeuralLaneDetector:
                                            self.compressed_image_callback, 
                                            queue_size=1, buff_size=2**24)
         
+        # Detection smoothing for stability
+        self.previous_lateral_error = 0.0
+        self.previous_heading_error = 0.0
+        self.detection_filter_alpha = 0.6  # Smoothing factor
+        self.confidence_threshold = 0.3  # More permissive detection
+        
         # Neural network setup
         if TORCH_AVAILABLE:
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -223,14 +229,14 @@ class NeuralLaneDetector:
             roi_top = int(height * 0.6)
             roi = hsv[roi_top:height, :]
             
-            # Yellow lane detection
-            yellow_lower = np.array([15, 80, 80])
-            yellow_upper = np.array([35, 255, 255])
+            # More robust yellow lane detection
+            yellow_lower = np.array([10, 60, 60])  # More permissive
+            yellow_upper = np.array([40, 255, 255])
             yellow_mask = cv2.inRange(roi, yellow_lower, yellow_upper)
             
-            # White lane detection  
-            white_lower = np.array([0, 0, 200])
-            white_upper = np.array([255, 30, 255])
+            # More robust white lane detection  
+            white_lower = np.array([0, 0, 180])  # Lower threshold
+            white_upper = np.array([255, 40, 255])  # More permissive
             white_mask = cv2.inRange(roi, white_lower, white_upper)
             
             # Find contours
@@ -285,6 +291,16 @@ class NeuralLaneDetector:
                 
                 # Simple heading calculation
                 heading_error = lateral_offset * 0.5  # Simple approximation
+                
+                # Apply smoothing to reduce oscillation
+                lateral_offset = (self.detection_filter_alpha * lateral_offset + 
+                                (1 - self.detection_filter_alpha) * self.previous_lateral_error)
+                heading_error = (self.detection_filter_alpha * heading_error + 
+                               (1 - self.detection_filter_alpha) * self.previous_heading_error)
+                
+                # Store for next iteration
+                self.previous_lateral_error = lateral_offset
+                self.previous_heading_error = heading_error
                 
                 lane_pose.x = lateral_offset
                 lane_pose.y = heading_error

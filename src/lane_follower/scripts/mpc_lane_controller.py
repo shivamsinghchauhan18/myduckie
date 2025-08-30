@@ -87,6 +87,10 @@ class MPCLaneController:
         self.lane_curvature = 0.0
         self.lane_coefficients = None
         
+        # Smoothing for stable control
+        self.previous_steering = 0.0
+        self.steering_filter_alpha = 0.7  # Smoothing factor
+        
         # MPC weights (tunable parameters)
         self.Q = np.diag([10.0, 1.0, 5.0, 1.0])  # State weights [x, y, theta, v]
         self.R = np.diag([1.0, 5.0])  # Control weights [v_cmd, steering]
@@ -219,21 +223,29 @@ class MPCLaneController:
             lateral_error = initial_state[0]  # x position error
             heading_error = initial_state[2]  # theta error
             
-            # Simple control law
-            Kp_lateral = 2.0
-            Kp_heading = 1.5
+            # Gentler control law - TUNED FOR STABILITY
+            Kp_lateral = 0.8  # Reduced from 2.0
+            Kp_heading = 0.6  # Reduced from 1.5
             
             # Calculate control commands
             steering_cmd = -Kp_lateral * lateral_error - Kp_heading * heading_error
             
-            # Limit steering
-            steering_cmd = np.clip(steering_cmd, self.delta_min, self.delta_max)
+            # More conservative steering limits
+            max_steering = 0.4  # Reduced from 1.0 rad
+            steering_cmd = np.clip(steering_cmd, -max_steering, max_steering)
             
-            # Set target speed based on error magnitude
-            if abs(lateral_error) > 0.3 or abs(heading_error) > 0.5:
-                speed_cmd = 0.15  # Slow down for large errors
+            # Apply smoothing to prevent oscillation
+            steering_cmd = (self.steering_filter_alpha * steering_cmd + 
+                          (1 - self.steering_filter_alpha) * self.previous_steering)
+            self.previous_steering = steering_cmd
+            
+            # Smoother speed control
+            if abs(lateral_error) > 0.4 or abs(heading_error) > 0.6:
+                speed_cmd = 0.12  # Slower for large errors
+            elif abs(lateral_error) > 0.2 or abs(heading_error) > 0.3:
+                speed_cmd = 0.16  # Medium speed for medium errors
             else:
-                speed_cmd = self.target_speed
+                speed_cmd = self.target_speed  # Full speed when centered
             
             # Create control sequence (repeat first command for horizon)
             controls = np.zeros((self.horizon, self.control_dim))
