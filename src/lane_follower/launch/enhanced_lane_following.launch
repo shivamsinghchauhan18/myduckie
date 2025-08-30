@@ -42,7 +42,11 @@
 
   <!-- Optional Sensor Fusion (publishes fused_lane_pose) -->
   <group if="$(arg use_sensor_fusion)">
-    <node name="sensor_fusion_system" pkg="lane_follower" type="sensor_fusion_system.py" output="screen"/>
+    <node name="sensor_fusion_system" pkg="lane_follower" type="sensor_fusion_system.py" output="screen">
+      <!-- Remap sensor topics to robot namespace -->
+      <remap from="/imu/data" to="/$(arg robot_name)/imu_node/data"/>
+      <remap from="/odom" to="/$(arg robot_name)/kinematics_node/odometry"/>
+    </node>
   </group>
 
   <!-- Lane Mux (always on) selects source; default advanced -->
@@ -62,6 +66,8 @@
   <node name="cmd_mux" pkg="lane_follower" type="cmd_mux.py" output="screen">
     <param name="cmd_source" value="pid"/>
     <param name="robot_name" value="$(arg robot_name)"/>
+  <!-- Ensure final commands go to the robot-namespaced topic -->
+  <remap from="/car_cmd_switch_node/cmd" to="/$(arg robot_name)/car_cmd_switch_node/cmd"/>
   </node>
 
 </launch>
