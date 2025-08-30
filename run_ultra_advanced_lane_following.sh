@@ -32,6 +32,9 @@ catkin_make
 
 echo ""
 echo "🔧 Sourcing ROS environment..."
+export ROS_MASTER_URI=http://localhost:11311
+export ROS_HOSTNAME=localhost
+unset ROS_IP
 source devel/setup.bash
 
 echo ""
