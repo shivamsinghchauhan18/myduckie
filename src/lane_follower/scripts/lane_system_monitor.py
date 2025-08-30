@@ -21,9 +21,10 @@ class LaneSystemMonitor:
         rospy.Subscriber('/lane_follower/lane_center', Point, self.lane_center_callback)
         rospy.Subscriber('/lane_follower/obstacle_detected', Bool, self.obstacle_callback)
         rospy.Subscriber('/lane_follower/control_status', Bool, self.control_status_callback)
-        rospy.Subscriber('/cmd_vel', Twist, self.cmd_vel_callback)
-        # Also monitor MPC controller output
-        rospy.Subscriber('/blueduckie/car_cmd_switch_node/cmd', Twist2DStamped, self.mpc_cmd_callback)
+    rospy.Subscriber('/cmd_vel', Twist, self.cmd_vel_callback)
+    # Also monitor MPC controller output (both generic and robot-namespaced topics)
+    rospy.Subscriber('/car_cmd_switch_node/cmd', Twist2DStamped, self.mpc_cmd_callback)
+    rospy.Subscriber('/blueduckie/car_cmd_switch_node/cmd', Twist2DStamped, self.mpc_cmd_callback)
         
         # System state variables
         self.lane_found = False
@@ -102,10 +103,18 @@ class LaneSystemMonitor:
     def mpc_cmd_callback(self, msg):
         """Handle MPC controller commands"""
         self.control_command_count += 1
-        
+        # Treat MPC output as active control and update last control time
+        self.control_active = True
+        self.last_control_time = rospy.Time.now()
+
+        # Synthesize a Twist for unified reporting
+        twist = Twist()
+        twist.linear.x = msg.v
+        twist.angular.z = msg.omega
+        self.current_velocity = twist
+
         # Log significant control actions
         if abs(msg.v) > 0.05 or abs(msg.omega) > 0.05:
-            self.last_control_time = rospy.Time.now()
             rospy.loginfo_throttle(5, f"🎮 MPC Control: v={msg.v:.3f}, ω={msg.omega:.3f}")
     
     def report_system_status(self, event):

@@ -60,6 +60,7 @@ class MPCLaneController:
         self.mpc_debug_pub = rospy.Publisher('/lane_follower/mpc_debug', Float32MultiArray, queue_size=1)
         self.predicted_path_pub = rospy.Publisher('/lane_follower/predicted_path', Float32MultiArray, queue_size=1)
         self.control_effort_pub = rospy.Publisher('/lane_follower/control_effort', Float32, queue_size=1)
+        self.control_status_pub = rospy.Publisher('/lane_follower/control_status', Bool, queue_size=1)
         
         # Subscribers - Use SAME topics as enhanced controller
         self.lane_pose_sub = rospy.Subscriber('/lane_follower/lane_pose', Point, self.lane_pose_callback)
@@ -67,6 +68,9 @@ class MPCLaneController:
         self.lane_center_sub = rospy.Subscriber('/lane_follower/lane_center', Point, self.lane_center_callback)
         self.lane_curvature_sub = rospy.Subscriber('/lane_follower/lane_curvature', Float32, self.curvature_callback)
         self.lane_coefficients_sub = rospy.Subscriber('/lane_follower/lane_coefficients', Float32MultiArray, self.coefficients_callback)
+        
+        # Adaptive learning integration
+        self.optimal_params_sub = rospy.Subscriber('/lane_follower/optimal_parameters', Float32MultiArray, self.parameter_update_callback)
         
         # Vehicle model
         self.vehicle_model = VehicleModel()
@@ -145,6 +149,17 @@ class MPCLaneController:
         if len(msg.data) >= 6:  # Left and right lane coefficients
             self.lane_coefficients = np.array(msg.data).reshape(2, 3)  # 2 lanes, 3 coefficients each
     
+    def parameter_update_callback(self, msg):
+        """Receive optimal parameters from adaptive learning system"""
+        if len(msg.data) >= 4:  # Expect at least 4 parameters
+            # Update MPC cost function weights
+            self.state_weight_x = msg.data[0]
+            self.state_weight_y = msg.data[1] 
+            self.state_weight_theta = msg.data[2]
+            self.control_weight_steering = msg.data[3]
+            
+            rospy.loginfo_throttle(10, f"🧠 MPC parameters updated by adaptive learning")
+    
     def mpc_control_loop(self, event):
         """Main MPC control loop"""
         if not self.lane_found:
@@ -193,8 +208,9 @@ class MPCLaneController:
                 self.publish_safe_stop()
                 
                 # Update state prediction
+                # Without valid controls, predict with zero input
                 self.current_state = self.vehicle_model.predict_state(
-                    self.current_state, [v_cmd, steering_cmd]
+                    self.current_state, [0.0, 0.0]
                 )
                 
                 # Publish debug information
@@ -215,37 +231,56 @@ class MPCLaneController:
             self._solving = False
     
     def solve_mpc_optimization(self, initial_state, reference_trajectory):
-        """Solve MPC optimization problem - SIMPLIFIED VERSION"""
+        """Solve ACTUAL MPC optimization problem"""
         try:
-            # FALLBACK: Use simple PID-like control instead of complex optimization
-            # This ensures the robot actually moves while we debug the full MPC
+            # Real MPC optimization with constraints
+            horizon = self.horizon
+            n_controls = 2  # [v, steering]
             
-            lateral_error = initial_state[0]  # x position error
-            heading_error = initial_state[2]  # theta error
-            
-            # Gentler control law - TUNED FOR STABILITY
-            Kp_lateral = 0.8  # Reduced from 2.0
-            Kp_heading = 0.6  # Reduced from 1.5
-            
-            # Calculate control commands
-            steering_cmd = -Kp_lateral * lateral_error - Kp_heading * heading_error
-            
-            # More conservative steering limits
-            max_steering = 0.4  # Reduced from 1.0 rad
-            steering_cmd = np.clip(steering_cmd, -max_steering, max_steering)
-            
-            # Apply smoothing to prevent oscillation
-            steering_cmd = (self.steering_filter_alpha * steering_cmd + 
-                          (1 - self.steering_filter_alpha) * self.previous_steering)
-            self.previous_steering = steering_cmd
-            
-            # Smoother speed control
-            if abs(lateral_error) > 0.4 or abs(heading_error) > 0.6:
-                speed_cmd = 0.12  # Slower for large errors
-            elif abs(lateral_error) > 0.2 or abs(heading_error) > 0.3:
-                speed_cmd = 0.16  # Medium speed for medium errors
+            # Initial guess - warm start with previous solution
+            if hasattr(self, 'previous_solution') and len(self.previous_solution) == horizon * n_controls:
+                x0 = self.previous_solution
             else:
-                speed_cmd = self.target_speed  # Full speed when centered
+                x0 = np.zeros(horizon * n_controls)
+                # Better initial guess
+                x0[0::2] = self.target_speed  # velocities
+                x0[1::2] = 0.0  # steering angles
+            
+            # Define optimization bounds
+            bounds = []
+            for i in range(horizon):
+                bounds.append((0.05, float(self.v_max)))  # velocity bounds
+                bounds.append((-float(self.delta_max), float(self.delta_max)))  # steering bounds
+            
+            # Solve optimization
+            result = minimize(
+                fun=self._mpc_cost_function,
+                x0=x0,
+                args=(initial_state, reference_trajectory),
+                bounds=bounds,
+                method='SLSQP',
+                options={'maxiter': 50, 'ftol': 1e-4}
+            )
+            
+            if result.success:
+                optimal_controls = result.x.reshape((horizon, n_controls))
+                self.previous_solution = result.x  # Store for warm start
+                
+                # Use first control action
+                speed_cmd = optimal_controls[0, 0]
+                steering_cmd = optimal_controls[0, 1]
+                
+                rospy.loginfo_throttle(5, f"🎯 MPC Optimized: v={speed_cmd:.3f}, ω={steering_cmd:.3f}")
+                
+            else:
+                # Fallback to PID if optimization fails
+                rospy.logwarn_throttle(10, "MPC optimization failed, using PID fallback")
+                lateral_error = initial_state[0]
+                heading_error = initial_state[2]
+                
+                steering_cmd = -0.8 * lateral_error - 0.6 * heading_error
+                steering_cmd = np.clip(steering_cmd, -0.4, 0.4)
+                speed_cmd = 0.15 if abs(lateral_error) > 0.3 else self.target_speed
             
             # Create control sequence (repeat first command for horizon)
             controls = np.zeros((self.horizon, self.control_dim))
@@ -253,7 +288,9 @@ class MPCLaneController:
                 controls[i, 0] = speed_cmd
                 controls[i, 1] = steering_cmd
             
-            rospy.loginfo_throttle(2, f"MPC Fallback: lat_err={lateral_error:.3f}, head_err={heading_error:.3f}, steer={steering_cmd:.3f}")
+            # Only log fallback details when we actually fell back
+            if not result.success:
+                rospy.loginfo_throttle(2, f"MPC Fallback: lat_err={lateral_error:.3f}, head_err={heading_error:.3f}, steer={steering_cmd:.3f}")
             return controls
             
         except Exception as e:
@@ -305,6 +342,9 @@ class MPCLaneController:
         
         self.cmd_vel_pub.publish(twist_msg)
         
+        # Publish control status (active)
+        self.control_status_pub.publish(Bool(True))
+        
         # Debug logging
         rospy.loginfo_throttle(2, f"MPC Publishing: v={v_cmd:.3f}, omega={steering_cmd:.3f}")
         
@@ -318,19 +358,21 @@ class MPCLaneController:
     def publish_mpc_debug(self, optimal_controls, reference_trajectory):
         """Publish MPC debug information"""
         # Flatten control sequence for publishing
-        controls_flat = optimal_controls.flatten()
-        debug_msg = Float32MultiArray()
-        debug_msg.data = controls_flat.tolist()
-        self.mpc_debug_pub.publish(debug_msg)
+        if optimal_controls is not None:
+            controls_flat = optimal_controls.flatten()
+            debug_msg = Float32MultiArray()
+            debug_msg.data = controls_flat.tolist()
+            self.mpc_debug_pub.publish(debug_msg)
         
         # Publish predicted path
-        predicted_trajectory = self.vehicle_model.predict_trajectory(
-            self.current_state, optimal_controls
-        )
-        path_flat = predicted_trajectory.flatten()
-        path_msg = Float32MultiArray()
-        path_msg.data = path_flat.tolist()
-        self.predicted_path_pub.publish(path_msg)
+        if optimal_controls is not None:
+            predicted_trajectory = self.vehicle_model.predict_trajectory(
+                self.current_state, optimal_controls
+            )
+            path_flat = predicted_trajectory.flatten()
+            path_msg = Float32MultiArray()
+            path_msg.data = path_flat.tolist()
+            self.predicted_path_pub.publish(path_msg)
     
     def publish_safe_stop(self):
         """Publish safe stop command"""
@@ -340,6 +382,9 @@ class MPCLaneController:
         twist_msg.v = 0.0
         twist_msg.omega = 0.0
         self.cmd_vel_pub.publish(twist_msg)
+        
+        # Publish control status (inactive when stopping)
+        self.control_status_pub.publish(Bool(False))
 
 class ReferenceTrajectoryGenerator:
     """Generate reference trajectory for MPC"""

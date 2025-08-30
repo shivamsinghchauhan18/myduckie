@@ -218,6 +218,67 @@ class NeuralLaneDetector:
         except Exception as e:
             rospy.logwarn(f"Could not load pretrained weights: {e}")
     
+    def neural_lane_detection(self, image):
+        """Actual neural network lane detection"""
+        if not TORCH_AVAILABLE or self.model is None:
+            raise Exception("Neural network not available")
+        
+        try:
+            # Preprocess image for neural network
+            processed_image = self.preprocess_image(image)
+            
+            # Convert to tensor
+            input_tensor = torch.from_numpy(processed_image).float().unsqueeze(0).to(self.device)
+            
+            # Run inference
+            with torch.no_grad():
+                output = self.model(input_tensor)
+                
+            # Post-process neural network output
+            left_lane, right_lane, confidence = self.postprocess_neural_output(output, image.shape)
+            
+            return left_lane, right_lane, confidence
+            
+        except Exception as e:
+            rospy.logwarn(f"Neural detection error: {e}")
+            raise e
+    
+    def postprocess_neural_output(self, output, image_shape):
+        """Convert neural network output to lane contours"""
+        # This is a simplified version - in practice you'd have trained lane segmentation
+        # For now, convert network output to something usable
+        try:
+            # Assume output is lane probability map
+            lane_prob = torch.sigmoid(output).cpu().numpy()[0, 0]
+            
+            # Threshold and find contours
+            lane_mask = (lane_prob > 0.5).astype(np.uint8) * 255
+            lane_mask = cv2.resize(lane_mask, (image_shape[1], image_shape[0]))
+            
+            contours, _ = cv2.findContours(lane_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            if len(contours) >= 2:
+                # Sort by x position to get left and right
+                contours = sorted(contours, key=lambda c: cv2.boundingRect(c)[0])
+                left_lane = contours[0]
+                right_lane = contours[-1]
+                confidence = 0.8
+            elif len(contours) == 1:
+                # Only one lane detected
+                left_lane = contours[0]
+                right_lane = None
+                confidence = 0.6
+            else:
+                left_lane = None
+                right_lane = None
+                confidence = 0.0
+                
+            return left_lane, right_lane, confidence
+            
+        except Exception as e:
+            rospy.logwarn(f"Neural postprocessing error: {e}")
+            return None, None, 0.0
+    
     def simple_lane_detection(self, image):
         """Simple lane detection using basic computer vision"""
         try:
@@ -433,8 +494,16 @@ class NeuralLaneDetector:
         try:
             start_time = time.time()
             
-            # Use simple fallback detection (skip neural network completely for now)
-            left_lane, right_lane, confidence = self.simple_lane_detection(image)
+            # Try neural detection first, fallback to simple if needed
+            if TORCH_AVAILABLE and self.model is not None:
+                try:
+                    left_lane, right_lane, confidence = self.neural_lane_detection(image)
+                    rospy.loginfo_throttle(10, "🧠 Using neural lane detection")
+                except Exception as e:
+                    rospy.logwarn_throttle(10, f"Neural detection failed: {e}, using fallback")
+                    left_lane, right_lane, confidence = self.simple_lane_detection(image)
+            else:
+                left_lane, right_lane, confidence = self.simple_lane_detection(image)
             
             # Create simple lane pose
             lane_pose = self.create_simple_lane_pose(left_lane, right_lane, image.shape, header)

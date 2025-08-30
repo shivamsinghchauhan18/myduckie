@@ -8,6 +8,7 @@ Comprehensive performance tracking and analysis
 import rospy
 from geometry_msgs.msg import Point, Twist
 from std_msgs.msg import Bool, Float32, String
+from duckietown_msgs.msg import Twist2DStamped
 # Using standard ROS messages
 import numpy as np
 from collections import deque
@@ -23,7 +24,9 @@ class LanePerformanceMonitor:
         rospy.Subscriber('/lane_follower/detection_info', String, self.detection_info_callback)
         rospy.Subscriber('/cmd_vel', Twist, self.cmd_vel_callback)
         rospy.Subscriber('/lane_follower/control_status', Bool, self.control_status_callback)
-        
+        # Also account for MPC controller output so speed/turn metrics are correct
+        rospy.Subscriber('/car_cmd_switch_node/cmd', Twist2DStamped, self.mpc_cmd_callback)
+        rospy.Subscriber('/blueduckie/car_cmd_switch_node/cmd', Twist2DStamped, self.mpc_cmd_callback)
         # Performance metrics storage
         self.window_size = 100
         
@@ -150,6 +153,33 @@ class LanePerformanceMonitor:
         
         self.previous_linear_vel = linear_vel
         self.previous_angular_vel = angular_vel
+
+    def mpc_cmd_callback(self, msg: Twist2DStamped):
+        """Handle Twist2DStamped control to keep metrics accurate when using MPC."""
+        # Convert to equivalent Twist components
+        linear_vel = msg.v
+        angular_vel = msg.omega
+
+        # Calculate velocity magnitude and update metrics (reuse same logic)
+        velocity_magnitude = np.sqrt(linear_vel**2 + angular_vel**2)
+        self.velocities.append(velocity_magnitude)
+        self.angular_velocities.append(abs(angular_vel))
+
+        linear_smoothness = abs(linear_vel - self.previous_linear_vel)
+        angular_smoothness = abs(angular_vel - self.previous_angular_vel)
+        total_smoothness = linear_smoothness + angular_smoothness
+        self.control_smoothness.append(total_smoothness)
+
+        if len(self.velocities) > 1:
+            speed_variation = abs(velocity_magnitude - self.velocities[-2])
+            speed_consistency = max(0, 1.0 - speed_variation * 10)
+            self.speed_consistency.append(speed_consistency)
+
+        self.previous_linear_vel = linear_vel
+        self.previous_angular_vel = angular_vel
+
+        # Mark control state as active when MPC commands flow
+        self.control_states.append(True)
     
     def control_status_callback(self, msg):
         self.control_states.append(msg.data)

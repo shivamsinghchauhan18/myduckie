@@ -110,20 +110,10 @@ class SensorFusionSystem:
         obs_dim = 3   # Variable based on sensor
         self.ekf = ExtendedKalmanFilter(state_dim, obs_dim)
         rospy.loginfo("SensorFusion: EKF initialized")
+    
         
-        # Publishers
-        self.fused_pose_pub = rospy.Publisher('/lane_follower/fused_pose', PoseStamped, queue_size=1)
-        self.fused_lane_pose_pub = rospy.Publisher('/lane_follower/fused_lane_pose', PointStamped, queue_size=1)
-        self.fusion_confidence_pub = rospy.Publisher('/lane_follower/fusion_confidence', Float32, queue_size=1)
-        self.fusion_debug_pub = rospy.Publisher('/lane_follower/fusion_debug', Float32MultiArray, queue_size=1)
-        
-        # Subscribers for different sensors
-        rospy.loginfo("SensorFusion: Setting up subscribers...")
-        self.setup_subscribers()
-        rospy.loginfo("SensorFusion: Subscribers set up")
-        
-        # Disable sensor fusion for now - just pass through lane data
-        self.fusion_enabled = False
+        # Enable sensor fusion - this is the whole point!
+        self.fusion_enabled = True
         
         # Sensor data storage
         self.camera_data = None
@@ -146,6 +136,17 @@ class SensorFusionSystem:
             'apriltag': deque(maxlen=50)
         }
         rospy.loginfo("SensorFusion: Sensor health tracking initialized")
+
+         # Publishers
+        self.fused_pose_pub = rospy.Publisher('/lane_follower/fused_pose', PoseStamped, queue_size=1)
+        self.fused_lane_pose_pub = rospy.Publisher('/lane_follower/fused_lane_pose', PointStamped, queue_size=1)
+        self.fusion_confidence_pub = rospy.Publisher('/lane_follower/fusion_confidence', Float32, queue_size=1)
+        self.fusion_debug_pub = rospy.Publisher('/lane_follower/fusion_debug', Float32MultiArray, queue_size=1)
+        
+        # Subscribers for different sensors
+        rospy.loginfo("SensorFusion: Setting up subscribers...")
+        self.setup_subscribers()
+        rospy.loginfo("SensorFusion: Subscribers set up")
         
         # Fusion parameters
         self.max_sensor_delay = 0.2  # Maximum acceptable sensor delay (seconds)
