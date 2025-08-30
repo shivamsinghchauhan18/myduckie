@@ -122,6 +122,9 @@ class MPCLaneController:
         # Simple state estimation (in practice, use Kalman filter)
         self.current_state[0] = lateral_error  # Lateral position
         self.current_state[2] = heading_error  # Heading angle
+        
+        # Debug logging
+        rospy.loginfo_throttle(3, f"MPC received lane pose: lat={lateral_error:.3f}, head={heading_error:.3f}")
     
     def lane_center_callback(self, msg):
         """Update lane center"""
@@ -140,7 +143,13 @@ class MPCLaneController:
     
     def mpc_control_loop(self, event):
         """Main MPC control loop"""
-        if not self.lane_found or self.lane_pose is None:
+        if not self.lane_found:
+            rospy.logwarn_throttle(5, "MPC: No lane found, stopping")
+            self.publish_safe_stop()
+            return
+            
+        if self.lane_pose is None:
+            rospy.logwarn_throttle(5, "MPC: No lane pose data, stopping")
             self.publish_safe_stop()
             return
             
@@ -198,43 +207,41 @@ class MPCLaneController:
             self._solving = False
     
     def solve_mpc_optimization(self, initial_state, reference_trajectory):
-        """Solve MPC optimization problem"""
-        # Decision variables: [u0, u1, ..., u_{N-1}] where ui = [v_i, delta_i]
-        n_vars = self.horizon * self.control_dim
-        
-        # Initial guess (maintain current speed, zero steering)
-        x0 = np.zeros(n_vars)
-        for i in range(self.horizon):
-            x0[i*2] = self.target_speed  # Initial velocity guess
-            x0[i*2 + 1] = 0.0  # Initial steering guess
-        
-        # Bounds for control variables
-        bounds = []
-        for i in range(self.horizon):
-            bounds.append((self.v_min, self.v_max))  # Velocity bounds
-            bounds.append((self.delta_min, self.delta_max))  # Steering bounds
-        
-        # Solve optimization
+        """Solve MPC optimization problem - SIMPLIFIED VERSION"""
         try:
-            result = minimize(
-                fun=self._mpc_cost_function,
-                x0=x0,
-                args=(initial_state, reference_trajectory),
-                method='SLSQP',
-                bounds=bounds,
-                options={'maxiter': 100, 'ftol': 1e-6}
-            )
+            # FALLBACK: Use simple PID-like control instead of complex optimization
+            # This ensures the robot actually moves while we debug the full MPC
             
-            if result.success:
-                # Reshape result to control sequence
-                controls = result.x.reshape(self.horizon, self.control_dim)
-                return controls
+            lateral_error = initial_state[0]  # x position error
+            heading_error = initial_state[2]  # theta error
+            
+            # Simple control law
+            Kp_lateral = 2.0
+            Kp_heading = 1.5
+            
+            # Calculate control commands
+            steering_cmd = -Kp_lateral * lateral_error - Kp_heading * heading_error
+            
+            # Limit steering
+            steering_cmd = np.clip(steering_cmd, self.delta_min, self.delta_max)
+            
+            # Set target speed based on error magnitude
+            if abs(lateral_error) > 0.3 or abs(heading_error) > 0.5:
+                speed_cmd = 0.15  # Slow down for large errors
             else:
-                rospy.logwarn(f"MPC optimization failed: {result.message}")
-                return None
-                
+                speed_cmd = self.target_speed
+            
+            # Create control sequence (repeat first command for horizon)
+            controls = np.zeros((self.horizon, self.control_dim))
+            for i in range(self.horizon):
+                controls[i, 0] = speed_cmd
+                controls[i, 1] = steering_cmd
+            
+            rospy.loginfo_throttle(2, f"MPC Fallback: lat_err={lateral_error:.3f}, head_err={heading_error:.3f}, steer={steering_cmd:.3f}")
+            return controls
+            
         except Exception as e:
-            rospy.logerr(f"MPC optimization error: {str(e)}")
+            rospy.logerr(f"MPC fallback error: {str(e)}")
             return None
     
     def _mpc_cost_function(self, decision_vars, initial_state, reference_trajectory):
