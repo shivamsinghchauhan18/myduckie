@@ -208,12 +208,10 @@ class NeuralLaneDetector:
         except Exception as e:
             rospy.logwarn(f"Could not load pretrained weights: {e}")
     
-    def fallback_lane_detection(self, processed_image):
+    def fallback_lane_detection(self, image_bgr):
         """Fallback lane detection using traditional computer vision"""
-        # Convert back to OpenCV format
-        image_bgr = np.transpose(processed_image, (1, 2, 0))
-        image_bgr = (image_bgr * 255).astype(np.uint8)
-        image_bgr = cv2.cvtColor(image_bgr, cv2.COLOR_RGB2BGR)
+        # Resize to network input size for consistency
+        image_bgr = cv2.resize(image_bgr, self.input_size)
         
         # Create fake segmentation output
         height, width = image_bgr.shape[:2]
@@ -270,18 +268,17 @@ class NeuralLaneDetector:
         try:
             start_time = time.time()
             
-            # Preprocess image for neural network
-            processed_image = self.preprocess_image(image)
-            
             # Run neural network inference or fallback
             if TORCH_AVAILABLE and self.model is not None:
+                # Preprocess image for neural network
+                processed_image = self.preprocess_image(image)
                 with torch.no_grad():
                     input_tensor = torch.from_numpy(processed_image).unsqueeze(0).to(self.device)
                     output = self.model(input_tensor)
                     segmentation = output.cpu().numpy()[0]
             else:
-                # Fallback: use traditional computer vision
-                segmentation = self.fallback_lane_detection(processed_image)
+                # Fallback: use traditional computer vision directly on original image
+                segmentation = self.fallback_lane_detection(image)
             
             # Post-process neural network output
             left_lane, right_lane, confidence = self.postprocess_segmentation(segmentation)

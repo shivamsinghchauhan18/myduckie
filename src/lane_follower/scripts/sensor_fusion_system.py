@@ -12,8 +12,13 @@ from geometry_msgs.msg import Point, PointStamped, Twist, PoseStamped
 from sensor_msgs.msg import Imu
 from std_msgs.msg import Bool, Float32, Header, Float32MultiArray
 from nav_msgs.msg import Odometry
-import tf2_ros
-import tf2_geometry_msgs
+try:
+    import tf2_ros
+    import tf2_geometry_msgs
+    TF2_AVAILABLE = True
+except ImportError:
+    rospy.logwarn("TF2 not available. Sensor fusion will work without coordinate transformations.")
+    TF2_AVAILABLE = False
 from collections import deque
 import threading
 import time
@@ -137,9 +142,13 @@ class SensorFusionSystem:
         self.max_sensor_delay = 0.2  # Maximum acceptable sensor delay (seconds)
         self.min_confidence_threshold = 0.3
         
-        # TF2 for coordinate transformations
-        self.tf_buffer = tf2_ros.Buffer()
-        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
+        # TF2 for coordinate transformations (if available)
+        if TF2_AVAILABLE:
+            self.tf_buffer = tf2_ros.Buffer()
+            self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
+        else:
+            self.tf_buffer = None
+            self.tf_listener = None
         
         # Fusion timer
         self.fusion_timer = rospy.Timer(rospy.Duration(0.05), self.fusion_loop)  # 20 Hz
@@ -167,9 +176,14 @@ class SensorFusionSystem:
         self.apriltag_sub = rospy.Subscriber('/apriltag_detector/detections', 
                                            Float32MultiArray, self.apriltag_callback)
         
-        # Control commands (for prediction)
-        self.cmd_sub = rospy.Subscriber('/car_cmd_switch_node/cmd', 
-                                       Twist, self.control_callback)
+        # Control commands (for prediction) - try both message types
+        try:
+            from duckietown_msgs.msg import Twist2DStamped
+            self.cmd_sub = rospy.Subscriber('/car_cmd_switch_node/cmd', 
+                                           Twist2DStamped, self.control_callback_2d)
+        except ImportError:
+            self.cmd_sub = rospy.Subscriber('/cmd_vel', 
+                                           Twist, self.control_callback)
         
         self.current_control = np.array([0.0, 0.0])  # [v, omega]
     
@@ -236,6 +250,10 @@ class SensorFusionSystem:
     def control_callback(self, msg):
         """Update current control input for prediction"""
         self.current_control = np.array([msg.linear.x, msg.angular.z])
+    
+    def control_callback_2d(self, msg):
+        """Update current control input for prediction (Twist2DStamped)"""
+        self.current_control = np.array([msg.v, msg.omega])
     
     def fusion_loop(self, event):
         """Main sensor fusion loop"""
