@@ -22,6 +22,9 @@ if [ -f /opt/ros/noetic/setup.bash ]; then
   source /opt/ros/noetic/setup.bash
 fi
 if [ -f devel/setup.bash ]; then
+  export ROS_MASTER_URI=http://localhost:11311
+  export ROS_HOSTNAME=localhost
+  unset ROS_IP
   source devel/setup.bash
 fi
 
