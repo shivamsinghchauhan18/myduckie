@@ -9,14 +9,14 @@ import rospy
 import numpy as np
 from geometry_msgs.msg import Point, Twist
 from std_msgs.msg import Bool, Float32, Header
-from geometry_msgs.msg import Twist
+from duckietown_msgs.msg import Twist2DStamped
 
 class EnhancedLaneController:
     def __init__(self):
         rospy.init_node('enhanced_lane_controller', anonymous=True)
         
         # Publishers - Full DuckieBot integration
-        self.cmd_vel_pub = rospy.Publisher('/cmd_vel', Twist, queue_size=1)
+        self.cmd_vel_pub = rospy.Publisher('/car_cmd_switch_node/cmd', Twist2DStamped, queue_size=1)
         # Additional publishers can be added later if needed
         
         # Performance monitoring publishers
@@ -337,11 +337,12 @@ class EnhancedLaneController:
         return min(100.0, max(0.0, overall_score))
     
     def publish_velocity_commands(self, linear_vel, angular_vel):
-        """Publish velocity commands to standard ROS topics"""
-        # Standard ROS Twist message
-        twist_msg = Twist()
-        twist_msg.linear.x = linear_vel
-        twist_msg.angular.z = angular_vel
+        """Publish velocity commands to DuckieBot car_cmd_switch_node"""
+        # DuckieBot Twist2DStamped message
+        twist_msg = Twist2DStamped()
+        twist_msg.header.stamp = rospy.Time.now()
+        twist_msg.v = linear_vel
+        twist_msg.omega = angular_vel
         self.cmd_vel_pub.publish(twist_msg)
     
     def emergency_stop(self):
