@@ -289,6 +289,9 @@ class MPCLaneController:
         
         self.cmd_vel_pub.publish(twist_msg)
         
+        # Debug logging
+        rospy.loginfo_throttle(2, f"MPC Publishing: v={v_cmd:.3f}, omega={steering_cmd:.3f}")
+        
         # Track control effort
         control_effort = np.sqrt(v_cmd**2 + steering_cmd**2)
         self.control_effort_pub.publish(Float32(control_effort))

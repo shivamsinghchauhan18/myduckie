@@ -8,6 +8,7 @@ Real-time monitoring and status reporting
 import rospy
 from geometry_msgs.msg import Point, Twist
 from std_msgs.msg import Bool, Float32, String
+from duckietown_msgs.msg import Twist2DStamped
 # Using standard ROS messages
 
 class LaneSystemMonitor:
@@ -21,6 +22,8 @@ class LaneSystemMonitor:
         rospy.Subscriber('/lane_follower/obstacle_detected', Bool, self.obstacle_callback)
         rospy.Subscriber('/lane_follower/control_status', Bool, self.control_status_callback)
         rospy.Subscriber('/cmd_vel', Twist, self.cmd_vel_callback)
+        # Also monitor MPC controller output
+        rospy.Subscriber('/blueduckie/car_cmd_switch_node/cmd', Twist2DStamped, self.mpc_cmd_callback)
         
         # System state variables
         self.lane_found = False
@@ -95,6 +98,15 @@ class LaneSystemMonitor:
             elif self.lane_found:
                 rospy.loginfo_throttle(5, f"🚗 Following: pos=({self.lane_center.x:.2f}) "
                                       f"vel=({msg.linear.x:.2f}, {msg.angular.z:.2f})")
+    
+    def mpc_cmd_callback(self, msg):
+        """Handle MPC controller commands"""
+        self.control_command_count += 1
+        
+        # Log significant control actions
+        if abs(msg.v) > 0.05 or abs(msg.omega) > 0.05:
+            self.last_control_time = rospy.Time.now()
+            rospy.loginfo_throttle(5, f"🎮 MPC Control: v={msg.v:.3f}, ω={msg.omega:.3f}")
     
     def report_system_status(self, event):
         """Report comprehensive system status"""
