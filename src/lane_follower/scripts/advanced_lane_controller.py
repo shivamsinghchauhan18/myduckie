@@ -9,7 +9,7 @@ import rospy
 import numpy as np
 from geometry_msgs.msg import Point, Twist
 from std_msgs.msg import Bool, Float32, Header, String
-from duckietown_msgs.msg import WheelsCmdStamped, Twist2DStamped, LanePose
+from duckietown_msgs.msg import WheelsCmdStamped, Twist2DStamped
 import math
 
 class AdvancedLaneController:
@@ -338,16 +338,10 @@ class AdvancedLaneController:
         if not self.lane_detection:
             return
         
-        lane_pose = LanePose()
-        lane_pose.header = Header()
-        lane_pose.header.stamp = rospy.Time.now()
-        lane_pose.header.frame_id = "base_link"
-        
+        lane_pose = Point()
         lane_pose.x = self.lane_detection.x  # Lateral offset
         lane_pose.y = self.lane_detection.y  # Heading error
         lane_pose.z = 1.0 if self.lane_found else 0.0  # In lane status
-        lane_pose.status = 0 if self.lane_found else 1
-        lane_pose.v_ref = self.target_speed
         
         self.lane_pose_pub.publish(lane_pose)
     
