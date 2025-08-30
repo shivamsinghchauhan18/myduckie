@@ -208,34 +208,167 @@ class NeuralLaneDetector:
         except Exception as e:
             rospy.logwarn(f"Could not load pretrained weights: {e}")
     
-    def fallback_lane_detection(self, image_bgr):
-        """Fallback lane detection using traditional computer vision"""
-        # Resize to network input size for consistency
-        image_bgr = cv2.resize(image_bgr, self.input_size)
+    def simple_lane_detection(self, image):
+        """Simple lane detection using basic computer vision"""
+        try:
+            # Convert to HSV
+            hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+            height, width = image.shape[:2]
+            
+            # Focus on bottom half of image
+            roi_top = int(height * 0.6)
+            roi = hsv[roi_top:height, :]
+            
+            # Yellow lane detection
+            yellow_lower = np.array([15, 80, 80])
+            yellow_upper = np.array([35, 255, 255])
+            yellow_mask = cv2.inRange(roi, yellow_lower, yellow_upper)
+            
+            # White lane detection  
+            white_lower = np.array([0, 0, 200])
+            white_upper = np.array([255, 30, 255])
+            white_mask = cv2.inRange(roi, white_lower, white_upper)
+            
+            # Find contours
+            left_lane = None
+            right_lane = None
+            confidence = 0.0
+            
+            # Process yellow (left) lane
+            yellow_contours, _ = cv2.findContours(yellow_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if yellow_contours:
+                largest_yellow = max(yellow_contours, key=cv2.contourArea)
+                if cv2.contourArea(largest_yellow) > 100:
+                    left_lane = largest_yellow
+                    confidence += 0.5
+            
+            # Process white (right) lane
+            white_contours, _ = cv2.findContours(white_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if white_contours:
+                largest_white = max(white_contours, key=cv2.contourArea)
+                if cv2.contourArea(largest_white) > 100:
+                    right_lane = largest_white
+                    confidence += 0.5
+            
+            return left_lane, right_lane, confidence
+            
+        except Exception as e:
+            rospy.logerr(f"Error in simple lane detection: {str(e)}")
+            return None, None, 0.0
+    
+    def create_simple_lane_pose(self, left_lane, right_lane, image_shape, header):
+        """Create simple lane pose message"""
+        lane_pose = PointStamped()
+        lane_pose.header = header
         
-        # Create fake segmentation output
-        height, width = image_bgr.shape[:2]
-        segmentation = np.zeros((3, height, width), dtype=np.float32)
+        height, width = image_shape[:2]
+        image_center = width // 2
         
-        # Use color-based detection for lanes
-        hsv = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV)
+        try:
+            if left_lane is not None and right_lane is not None:
+                # Get bottom points of both lanes
+                left_bottom = tuple(left_lane[left_lane[:, :, 1].argmax()][0])
+                right_bottom = tuple(right_lane[right_lane[:, :, 1].argmax()][0])
+                
+                # Adjust for ROI offset
+                left_bottom = (left_bottom[0], left_bottom[1] + int(height * 0.6))
+                right_bottom = (right_bottom[0], right_bottom[1] + int(height * 0.6))
+                
+                # Calculate lane center
+                lane_center_x = (left_bottom[0] + right_bottom[0]) // 2
+                
+                # Calculate lateral offset (normalized)
+                lateral_offset = (lane_center_x - image_center) / (image_center)
+                
+                # Simple heading calculation
+                heading_error = lateral_offset * 0.5  # Simple approximation
+                
+                lane_pose.point.x = lateral_offset
+                lane_pose.point.y = heading_error
+                lane_pose.point.z = 1.0  # Lane found
+                
+            elif left_lane is not None:
+                # Only left lane
+                left_bottom = tuple(left_lane[left_lane[:, :, 1].argmax()][0])
+                left_bottom = (left_bottom[0], left_bottom[1] + int(height * 0.6))
+                
+                # Estimate center assuming standard lane width
+                estimated_center = left_bottom[0] + 100
+                lateral_offset = (estimated_center - image_center) / image_center
+                
+                lane_pose.point.x = lateral_offset
+                lane_pose.point.y = lateral_offset * 0.3
+                lane_pose.point.z = 0.7  # Partial detection
+                
+            elif right_lane is not None:
+                # Only right lane
+                right_bottom = tuple(right_lane[right_lane[:, :, 1].argmax()][0])
+                right_bottom = (right_bottom[0], right_bottom[1] + int(height * 0.6))
+                
+                # Estimate center assuming standard lane width
+                estimated_center = right_bottom[0] - 100
+                lateral_offset = (estimated_center - image_center) / image_center
+                
+                lane_pose.point.x = lateral_offset
+                lane_pose.point.y = lateral_offset * 0.3
+                lane_pose.point.z = 0.7  # Partial detection
+                
+            else:
+                # No lanes found
+                lane_pose.point.x = 0.0
+                lane_pose.point.y = 0.0
+                lane_pose.point.z = 0.0
+                
+        except Exception as e:
+            rospy.logerr(f"Error creating lane pose: {str(e)}")
+            lane_pose.point.x = 0.0
+            lane_pose.point.y = 0.0
+            lane_pose.point.z = 0.0
         
-        # Yellow lane detection
-        yellow_lower = np.array([15, 80, 80])
-        yellow_upper = np.array([35, 255, 255])
-        yellow_mask = cv2.inRange(hsv, yellow_lower, yellow_upper)
+        return lane_pose
+    
+    def create_simple_debug_image(self, image, left_lane, right_lane):
+        """Create simple debug visualization"""
+        debug_image = image.copy()
         
-        # White lane detection
-        white_lower = np.array([0, 0, 200])
-        white_upper = np.array([255, 30, 255])
-        white_mask = cv2.inRange(hsv, white_lower, white_upper)
+        try:
+            # Draw lanes if found
+            if left_lane is not None:
+                cv2.drawContours(debug_image, [left_lane], -1, (0, 255, 0), 3)
+                cv2.putText(debug_image, "LEFT", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+            
+            if right_lane is not None:
+                cv2.drawContours(debug_image, [right_lane], -1, (0, 0, 255), 3)
+                cv2.putText(debug_image, "RIGHT", (200, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            
+            # Draw center line
+            height, width = image.shape[:2]
+            cv2.line(debug_image, (width//2, 0), (width//2, height), (255, 255, 255), 2)
+            
+        except Exception as e:
+            rospy.logerr(f"Error creating debug image: {str(e)}")
         
-        # Assign to segmentation channels
-        segmentation[1] = yellow_mask.astype(np.float32) / 255.0  # Left lane (yellow)
-        segmentation[2] = white_mask.astype(np.float32) / 255.0   # Right lane (white)
-        segmentation[0] = 1.0 - np.maximum(segmentation[1], segmentation[2])  # Background
-        
-        return segmentation
+        return debug_image
+    
+    def publish_simple_results(self, lane_pose, confidence, debug_image, header):
+        """Publish simple results"""
+        try:
+            # Publish lane pose
+            self.lane_pose_pub.publish(lane_pose)
+            
+            # Publish lane found status
+            self.lane_found_pub.publish(Bool(lane_pose.point.z > 0.5))
+            
+            # Publish confidence
+            self.lane_confidence_pub.publish(Float32(confidence))
+            
+            # Publish debug image
+            debug_msg = self.bridge.cv2_to_imgmsg(debug_image, "bgr8")
+            debug_msg.header = header
+            self.debug_image_pub.publish(debug_msg)
+            
+        except Exception as e:
+            rospy.logerr(f"Error publishing results: {str(e)}")
     
     def compressed_image_callback(self, msg):
         """Handle compressed images from DuckieBot camera"""
@@ -268,38 +401,17 @@ class NeuralLaneDetector:
         try:
             start_time = time.time()
             
-            # Run neural network inference or fallback
-            if TORCH_AVAILABLE and self.model is not None:
-                # Preprocess image for neural network
-                processed_image = self.preprocess_image(image)
-                with torch.no_grad():
-                    input_tensor = torch.from_numpy(processed_image).unsqueeze(0).to(self.device)
-                    output = self.model(input_tensor)
-                    segmentation = output.cpu().numpy()[0]
-            else:
-                # Fallback: use traditional computer vision directly on original image
-                segmentation = self.fallback_lane_detection(image)
+            # Use simple fallback detection (skip neural network completely for now)
+            left_lane, right_lane, confidence = self.simple_lane_detection(image)
             
-            # Post-process neural network output
-            left_lane, right_lane, confidence = self.postprocess_segmentation(segmentation)
+            # Create simple lane pose
+            lane_pose = self.create_simple_lane_pose(left_lane, right_lane, image.shape, header)
             
-            # Update advanced tracking
-            self.lane_tracker.update(left_lane, right_lane, confidence)
-            smoothed_left, smoothed_right = self.lane_tracker.get_smoothed_lanes()
+            # Create simple debug image
+            debug_image = self.create_simple_debug_image(image, left_lane, right_lane)
             
-            if smoothed_left is not None and smoothed_right is not None:
-                # Calculate advanced lane metrics
-                lane_pose = self.calculate_advanced_lane_pose(smoothed_left, smoothed_right, image.shape)
-                curvature = self.calculate_lane_curvature(smoothed_left, smoothed_right)
-                lane_width = self.calculate_lane_width(smoothed_left, smoothed_right)
-                
-                # Create debug visualization
-                debug_image = self.create_neural_debug_visualization(image, segmentation, 
-                                                                   smoothed_left, smoothed_right, lane_pose)
-                
-                # Publish results
-                self.publish_neural_results(lane_pose, confidence, curvature, lane_width, 
-                                          smoothed_left, smoothed_right, debug_image, header)
+            # Publish simple results
+            self.publish_simple_results(lane_pose, confidence, debug_image, header)
             
             # Track performance
             processing_time = time.time() - start_time
@@ -309,10 +421,10 @@ class NeuralLaneDetector:
             if self.detection_count % 50 == 0:
                 avg_time = np.mean(self.processing_times)
                 fps = 1.0 / avg_time if avg_time > 0 else 0
-                rospy.loginfo(f"Neural detector: {fps:.1f} FPS, {avg_time*1000:.1f}ms avg")
+                rospy.loginfo(f"Lane detector: {fps:.1f} FPS, {avg_time*1000:.1f}ms avg")
             
         except Exception as e:
-            rospy.logerr(f"Error in neural lane detection: {str(e)}")
+            rospy.logerr(f"Error in lane detection: {str(e)}")
         finally:
             self._processing = False
     

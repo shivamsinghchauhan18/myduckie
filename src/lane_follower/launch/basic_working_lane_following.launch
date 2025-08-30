@@ -1,0 +1,36 @@
+<launch>
+  <!-- Basic Working Lane Following System -->
+  
+  <arg name="robot_name" default="blueduckie"/>
+  
+  <!-- Use the original advanced lane detector (proven to work) -->
+  <node name="advanced_lane_detector" pkg="lane_follower" type="advanced_lane_detector.py" output="screen">
+    <param name="robot_name" value="$(arg robot_name)"/>
+    <remap from="/camera_node/image/compressed" to="/$(arg robot_name)/camera_node/image/compressed"/>
+  </node>
+  
+  <!-- Use the enhanced PID controller (proven to work) -->
+  <node name="enhanced_lane_controller" pkg="lane_follower" type="enhanced_lane_controller.py" output="screen">
+    <param name="max_speed" value="0.25"/>
+    <param name="target_speed" value="0.2"/>
+    <param name="kp_lateral" value="2.0"/>
+    <param name="ki_lateral" value="0.1"/>
+    <param name="kd_lateral" value="0.5"/>
+    <param name="kp_heading" value="1.5"/>
+    <param name="ki_heading" value="0.05"/>
+    <param name="kd_heading" value="0.3"/>
+    <remap from="/car_cmd_switch_node/cmd" to="/$(arg robot_name)/car_cmd_switch_node/cmd"/>
+  </node>
+  
+  <!-- Basic performance monitor -->
+  <node name="lane_performance_monitor" pkg="lane_follower" type="lane_performance_monitor.py" output="screen">
+    <param name="window_size" value="50"/>
+    <param name="stats_interval" value="10.0"/>
+  </node>
+  
+  <!-- Basic system monitor -->
+  <node name="lane_system_monitor" pkg="lane_follower" type="lane_system_monitor.py" output="screen">
+    <param name="monitor_interval" value="3.0"/>
+  </node>
+
+</launch>
