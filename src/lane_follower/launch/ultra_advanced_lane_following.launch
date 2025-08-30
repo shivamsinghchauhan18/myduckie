@@ -1,0 +1,199 @@
+<launch>
+  <!-- Ultra-Advanced DuckieTown Lane Following System -->
+  <!-- Integrates Neural Networks, MPC, Sensor Fusion, and Adaptive Learning -->
+  
+  <!-- Parameters -->
+  <param name="use_sim_time" value="false"/>
+  
+  <!-- Auto-detect robot name or use default -->
+  <arg name="robot_name" default="blueduckie"/>
+  <arg name="use_neural_detection" default="true"/>
+  <arg name="use_mpc_control" default="true"/>
+  <arg name="use_sensor_fusion" default="true"/>
+  <arg name="use_adaptive_learning" default="true"/>
+  
+  <!-- Neural Network Lane Detection Node -->
+  <group if="$(arg use_neural_detection)">
+    <node name="neural_lane_detector" pkg="lane_follower" type="neural_lane_detector.py" output="screen">
+      <param name="robot_name" value="$(arg robot_name)"/>
+      <!-- Neural network parameters -->
+      <param name="input_size_width" value="320"/>
+      <param name="input_size_height" value="240"/>
+      <param name="confidence_threshold" value="0.5"/>
+      <param name="temporal_smoothing" value="true"/>
+      <param name="history_size" value="10"/>
+      <!-- Remap to robot-specific camera topic -->
+      <remap from="/camera_node/image/compressed" to="/$(arg robot_name)/camera_node/image/compressed"/>
+    </node>
+  </group>
+  
+  <!-- Fallback to Advanced Lane Detection if neural is disabled -->
+  <group unless="$(arg use_neural_detection)">
+    <node name="advanced_lane_detector" pkg="lane_follower" type="advanced_lane_detector.py" output="screen">
+      <param name="robot_name" value="$(arg robot_name)"/>
+      <!-- Traditional CV parameters -->
+      <param name="roi_top_ratio" value="0.6"/>
+      <param name="roi_bottom_ratio" value="1.0"/>
+      <param name="yellow_hue_low" value="15"/>
+      <param name="yellow_hue_high" value="35"/>
+      <param name="white_value_low" value="200"/>
+      <param name="canny_low" value="50"/>
+      <param name="canny_high" value="150"/>
+      <remap from="/camera_node/image/compressed" to="/$(arg robot_name)/camera_node/image/compressed"/>
+    </node>
+  </group>
+  
+  <!-- Sensor Fusion System -->
+  <group if="$(arg use_sensor_fusion)">
+    <node name="sensor_fusion_system" pkg="lane_follower" type="sensor_fusion_system.py" output="screen">
+      <!-- EKF parameters -->
+      <param name="process_noise" value="0.01"/>
+      <param name="measurement_noise_camera" value="0.1"/>
+      <param name="measurement_noise_imu" value="0.05"/>
+      <param name="measurement_noise_odom" value="0.02"/>
+      <param name="measurement_noise_apriltag" value="0.1"/>
+      <!-- Sensor timeout parameters -->
+      <param name="max_sensor_delay" value="0.2"/>
+      <param name="min_confidence_threshold" value="0.3"/>
+      <!-- Remap sensor topics -->
+      <remap from="/imu/data" to="/$(arg robot_name)/imu_node/data"/>
+      <remap from="/odom" to="/$(arg robot_name)/kinematics_node/odometry"/>
+    </node>
+  </group>
+  
+  <!-- Model Predictive Controller -->
+  <group if="$(arg use_mpc_control)">
+    <node name="mpc_lane_controller" pkg="lane_follower" type="mpc_lane_controller.py" output="screen">
+      <!-- MPC parameters -->
+      <param name="mpc_horizon" value="10"/>
+      <param name="mpc_dt" value="0.1"/>
+      <param name="target_speed" value="0.25"/>
+      <!-- Vehicle model parameters -->
+      <param name="wheelbase" value="0.1"/>
+      <param name="max_speed" value="0.4"/>
+      <param name="max_steering" value="1.0"/>
+      <!-- Cost function weights -->
+      <param name="state_weight_x" value="10.0"/>
+      <param name="state_weight_y" value="1.0"/>
+      <param name="state_weight_theta" value="5.0"/>
+      <param name="state_weight_v" value="1.0"/>
+      <param name="control_weight_v" value="1.0"/>
+      <param name="control_weight_steering" value="5.0"/>
+      <!-- Remap to robot-specific topics -->
+      <remap from="/car_cmd_switch_node/cmd" to="/$(arg robot_name)/car_cmd_switch_node/cmd"/>
+    </node>
+  </group>
+  
+  <!-- Fallback to Enhanced PID Controller if MPC is disabled -->
+  <group unless="$(arg use_mpc_control)">
+    <node name="enhanced_lane_controller" pkg="lane_follower" type="enhanced_lane_controller.py" output="screen">
+      <!-- Speed parameters -->
+      <param name="max_speed" value="0.3"/>
+      <param name="min_speed" value="0.1"/>
+      <param name="target_speed" value="0.25"/>
+      <!-- PID parameters (will be overridden by adaptive learning) -->
+      <param name="kp_lateral" value="2.0"/>
+      <param name="ki_lateral" value="0.1"/>
+      <param name="kd_lateral" value="0.5"/>
+      <param name="kp_heading" value="1.5"/>
+      <param name="ki_heading" value="0.05"/>
+      <param name="kd_heading" value="0.3"/>
+      <!-- Advanced features -->
+      <param name="adaptive_speed" value="true"/>
+      <param name="curve_detection" value="true"/>
+      <param name="predictive_control" value="true"/>
+      <param name="smoothing_factor" value="0.8"/>
+      <!-- Remap to robot-specific topics -->
+      <remap from="/car_cmd_switch_node/cmd" to="/$(arg robot_name)/car_cmd_switch_node/cmd"/>
+    </node>
+  </group>
+  
+  <!-- Adaptive Learning System -->
+  <group if="$(arg use_adaptive_learning)">
+    <node name="adaptive_learning_system" pkg="lane_follower" type="adaptive_learning_system.py" output="screen">
+      <!-- Learning parameters -->
+      <param name="learning_enabled" value="true"/>
+      <param name="adaptation_interval" value="30.0"/>
+      <param name="adaptation_rate" value="0.1"/>
+      <!-- Performance tracking -->
+      <param name="performance_window_size" value="100"/>
+      <param name="min_training_samples" value="20"/>
+      <!-- Model parameters -->
+      <param name="model_save_interval" value="300.0"/>
+      <param name="model_file_path" value="$(env HOME)/lane_following_models.pkl"/>
+    </node>
+  </group>
+  
+  <!-- Lane Obstacle Detector (Enhanced) -->
+  <node name="lane_obstacle_detector" pkg="lane_follower" type="lane_obstacle_detector.py" output="screen">
+    <param name="detection_method" value="combined"/>
+    <param name="min_obstacle_area" value="800"/>
+    <param name="safe_distance_pixels" value="80"/>
+    <param name="obstacle_height_threshold" value="40"/>
+    <!-- Enhanced parameters -->
+    <param name="confidence_threshold" value="0.7"/>
+    <param name="temporal_filtering" value="true"/>
+    <param name="multi_scale_detection" value="true"/>
+  </node>
+  
+  <!-- Advanced Performance Monitor -->
+  <node name="lane_performance_monitor" pkg="lane_follower" type="lane_performance_monitor.py" output="screen">
+    <param name="window_size" value="150"/>
+    <param name="stats_interval" value="8.0"/>
+    <param name="detailed_stats_interval" value="30.0"/>
+    <!-- Enhanced metrics -->
+    <param name="track_neural_performance" value="$(arg use_neural_detection)"/>
+    <param name="track_mpc_performance" value="$(arg use_mpc_control)"/>
+    <param name="track_fusion_performance" value="$(arg use_sensor_fusion)"/>
+    <param name="track_learning_performance" value="$(arg use_adaptive_learning)"/>
+  </node>
+  
+  <!-- Enhanced System Monitor -->
+  <node name="lane_system_monitor" pkg="lane_follower" type="lane_system_monitor.py" output="screen">
+    <param name="monitor_interval" value="1.5"/>
+    <param name="health_check_interval" value="5.0"/>
+    <!-- System integration monitoring -->
+    <param name="monitor_neural_system" value="$(arg use_neural_detection)"/>
+    <param name="monitor_mpc_system" value="$(arg use_mpc_control)"/>
+    <param name="monitor_fusion_system" value="$(arg use_sensor_fusion)"/>
+    <param name="monitor_learning_system" value="$(arg use_adaptive_learning)"/>
+  </node>
+  
+  <!-- AprilTag Integration (if available) -->
+  <group if="$(eval arg('use_sensor_fusion'))">
+    <include file="$(find myapriltags)/launch/apriltag_detection.launch" if="$(eval find('myapriltags') != '')">
+      <arg name="robot_name" value="$(arg robot_name)"/>
+    </include>
+  </group>
+  
+  <!-- YOLO Integration for Advanced Obstacle Detection (if available) -->
+  <group>
+    <include file="$(find yolov8)/launch/yolo_system.launch" if="$(eval find('yolov8') != '')">
+      <arg name="robot_name" value="$(arg robot_name)"/>
+      <arg name="integration_mode" value="lane_following"/>
+    </include>
+  </group>
+  
+  <!-- Parameter Server for Dynamic Reconfiguration -->
+  <node name="lane_parameter_server" pkg="dynamic_reconfigure" type="dynparam" 
+        args="set_from_parameters lane_follower">
+    <!-- This allows runtime parameter adjustment -->
+  </node>
+  
+  <!-- RViz Visualization (optional) -->
+  <node name="rviz" pkg="rviz" type="rviz" 
+        args="-d $(find lane_follower)/config/ultra_advanced_lane_following.rviz" 
+        if="$(eval env('DISPLAY', '') != '')"/>
+  
+  <!-- Data Logging for Analysis -->
+  <node name="rosbag_record" pkg="rosbag" type="record" 
+        args="-o /tmp/lane_following_data 
+              /lane_follower/neural_lane_pose 
+              /lane_follower/fused_lane_pose 
+              /lane_follower/mpc_debug 
+              /lane_follower/optimal_parameters 
+              /lane_follower/performance 
+              /$(arg robot_name)/camera_node/image/compressed"
+        if="$(eval env('RECORD_DATA', 'false') == 'true')"/>
+
+</launch>

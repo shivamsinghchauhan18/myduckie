@@ -37,5 +37,10 @@ catkin_install_python(PROGRAMS
   scripts/lane_performance_monitor.py
   scripts/lane_system_monitor.py
   scripts/lane_debug_system.py
+  scripts/neural_lane_detector.py
+  scripts/mpc_lane_controller.py
+  scripts/sensor_fusion_system.py
+  scripts/adaptive_learning_system.py
+  scripts/lane_obstacle_detector.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
