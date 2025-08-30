@@ -61,9 +61,10 @@ class MPCLaneController:
         self.predicted_path_pub = rospy.Publisher('/lane_follower/predicted_path', Float32MultiArray, queue_size=1)
         self.control_effort_pub = rospy.Publisher('/lane_follower/control_effort', Float32, queue_size=1)
         
-        # Subscribers
-        self.neural_pose_sub = rospy.Subscriber('/lane_follower/neural_lane_pose', PointStamped, self.neural_pose_callback)
-        self.lane_found_sub = rospy.Subscriber('/lane_follower/neural_lane_found', Bool, self.lane_found_callback)
+        # Subscribers - Use SAME topics as enhanced controller
+        self.lane_pose_sub = rospy.Subscriber('/lane_follower/lane_pose', Point, self.lane_pose_callback)
+        self.lane_found_sub = rospy.Subscriber('/lane_follower/lane_found', Bool, self.lane_found_callback)
+        self.lane_center_sub = rospy.Subscriber('/lane_follower/lane_center', Point, self.lane_center_callback)
         self.lane_curvature_sub = rospy.Subscriber('/lane_follower/lane_curvature', Float32, self.curvature_callback)
         self.lane_coefficients_sub = rospy.Subscriber('/lane_follower/lane_coefficients', Float32MultiArray, self.coefficients_callback)
         
@@ -110,17 +111,21 @@ class MPCLaneController:
         
         rospy.loginfo("MPC Lane Controller initialized - Advanced optimization-based control")
     
-    def neural_pose_callback(self, msg):
-        """Update lane pose from neural detector"""
+    def lane_pose_callback(self, msg):
+        """Update lane pose from detector"""
         self.lane_pose = msg
         
         # Update current state estimate
-        lateral_error = msg.point.x
-        heading_error = msg.point.y
+        lateral_error = msg.x
+        heading_error = msg.y
         
         # Simple state estimation (in practice, use Kalman filter)
         self.current_state[0] = lateral_error  # Lateral position
         self.current_state[2] = heading_error  # Heading angle
+    
+    def lane_center_callback(self, msg):
+        """Update lane center"""
+        self.lane_center = msg
     
     def lane_found_callback(self, msg):
         self.lane_found = msg.data

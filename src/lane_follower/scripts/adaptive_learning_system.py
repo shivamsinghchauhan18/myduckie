@@ -282,10 +282,10 @@ class AdaptiveLearningSystem:
     
     def setup_subscribers(self):
         """Setup subscribers for learning inputs"""
-        # Lane following performance
-        self.fused_pose_sub = rospy.Subscriber('/lane_follower/fused_lane_pose', 
-                                              PointStamped, self.lane_pose_callback)
-        self.lane_found_sub = rospy.Subscriber('/lane_follower/neural_lane_found', 
+        # Lane following performance - use same topics as other components
+        self.lane_pose_sub = rospy.Subscriber('/lane_follower/lane_pose', 
+                                             Point, self.lane_pose_callback)
+        self.lane_found_sub = rospy.Subscriber('/lane_follower/lane_found', 
                                               Bool, self.lane_found_callback)
         self.curvature_sub = rospy.Subscriber('/lane_follower/lane_curvature', 
                                              Float32, self.curvature_callback)
@@ -304,8 +304,8 @@ class AdaptiveLearningSystem:
     
     def lane_pose_callback(self, msg):
         """Update lane pose for learning"""
-        self.current_lateral_error = msg.point.x
-        self.current_heading_error = msg.point.y
+        self.current_lateral_error = msg.x
+        self.current_heading_error = msg.y
         
         # Update performance metrics
         self.update_performance_metrics()

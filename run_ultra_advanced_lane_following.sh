@@ -71,11 +71,7 @@ fi
 
 # Launch the ultra-advanced system
 echo "🎬 Starting launch sequence..."
-roslaunch lane_follower $LAUNCH_FILE robot_name:=blueduckie \
-    use_neural_detection:=true \
-    use_mpc_control:=true \
-    use_sensor_fusion:=true \
-    use_adaptive_learning:=true
+roslaunch lane_follower ultra_advanced_lane_following_standalone.launch robot_name:=blueduckie
 
 # Check launch result
 if [ $? -eq 0 ]; then

@@ -143,13 +143,17 @@ class NeuralLaneDetector:
         # Initialize CV bridge
         self.bridge = CvBridge()
         
-        # Publishers
-        self.lane_pose_pub = rospy.Publisher('/lane_follower/neural_lane_pose', PointStamped, queue_size=1)
-        self.lane_found_pub = rospy.Publisher('/lane_follower/neural_lane_found', Bool, queue_size=1)
+        # Publishers - Use SAME topics as advanced detector for compatibility
+        self.lane_pose_pub = rospy.Publisher('/lane_follower/lane_pose', Point, queue_size=1)
+        self.lane_found_pub = rospy.Publisher('/lane_follower/lane_found', Bool, queue_size=1)
+        self.debug_image_pub = rospy.Publisher('/lane_follower/debug_image', Image, queue_size=1)
+        self.lane_center_pub = rospy.Publisher('/lane_follower/lane_center', Point, queue_size=1)
+        self.lane_angle_pub = rospy.Publisher('/lane_follower/lane_angle', Float32, queue_size=1)
+        self.detection_info_pub = rospy.Publisher('/lane_follower/detection_info', String, queue_size=1)
+        
+        # Additional neural-specific publishers
         self.lane_confidence_pub = rospy.Publisher('/lane_follower/lane_confidence', Float32, queue_size=1)
         self.lane_curvature_pub = rospy.Publisher('/lane_follower/lane_curvature', Float32, queue_size=1)
-        self.lane_width_pub = rospy.Publisher('/lane_follower/lane_width', Float32, queue_size=1)
-        self.debug_image_pub = rospy.Publisher('/lane_follower/neural_debug', Image, queue_size=1)
         self.lane_coefficients_pub = rospy.Publisher('/lane_follower/lane_coefficients', Float32MultiArray, queue_size=1)
         
         # Subscribers
@@ -257,9 +261,8 @@ class NeuralLaneDetector:
             return None, None, 0.0
     
     def create_simple_lane_pose(self, left_lane, right_lane, image_shape, header):
-        """Create simple lane pose message"""
-        lane_pose = PointStamped()
-        lane_pose.header = header
+        """Create simple lane pose message - SAME FORMAT as advanced detector"""
+        lane_pose = Point()  # Use Point, not PointStamped for compatibility
         
         height, width = image_shape[:2]
         image_center = width // 2
@@ -283,9 +286,9 @@ class NeuralLaneDetector:
                 # Simple heading calculation
                 heading_error = lateral_offset * 0.5  # Simple approximation
                 
-                lane_pose.point.x = lateral_offset
-                lane_pose.point.y = heading_error
-                lane_pose.point.z = 1.0  # Lane found
+                lane_pose.x = lateral_offset
+                lane_pose.y = heading_error
+                lane_pose.z = 1.0  # Lane found
                 
             elif left_lane is not None:
                 # Only left lane
@@ -296,9 +299,9 @@ class NeuralLaneDetector:
                 estimated_center = left_bottom[0] + 100
                 lateral_offset = (estimated_center - image_center) / image_center
                 
-                lane_pose.point.x = lateral_offset
-                lane_pose.point.y = lateral_offset * 0.3
-                lane_pose.point.z = 0.7  # Partial detection
+                lane_pose.x = lateral_offset
+                lane_pose.y = lateral_offset * 0.3
+                lane_pose.z = 0.7  # Partial detection
                 
             elif right_lane is not None:
                 # Only right lane
@@ -309,21 +312,21 @@ class NeuralLaneDetector:
                 estimated_center = right_bottom[0] - 100
                 lateral_offset = (estimated_center - image_center) / image_center
                 
-                lane_pose.point.x = lateral_offset
-                lane_pose.point.y = lateral_offset * 0.3
-                lane_pose.point.z = 0.7  # Partial detection
+                lane_pose.x = lateral_offset
+                lane_pose.y = lateral_offset * 0.3
+                lane_pose.z = 0.7  # Partial detection
                 
             else:
                 # No lanes found
-                lane_pose.point.x = 0.0
-                lane_pose.point.y = 0.0
-                lane_pose.point.z = 0.0
+                lane_pose.x = 0.0
+                lane_pose.y = 0.0
+                lane_pose.z = 0.0
                 
         except Exception as e:
             rospy.logerr(f"Error creating lane pose: {str(e)}")
-            lane_pose.point.x = 0.0
-            lane_pose.point.y = 0.0
-            lane_pose.point.z = 0.0
+            lane_pose.x = 0.0
+            lane_pose.y = 0.0
+            lane_pose.z = 0.0
         
         return lane_pose
     
@@ -351,20 +354,33 @@ class NeuralLaneDetector:
         return debug_image
     
     def publish_simple_results(self, lane_pose, confidence, debug_image, header):
-        """Publish simple results"""
+        """Publish simple results - SAME FORMAT as advanced detector"""
         try:
-            # Publish lane pose
+            # Publish lane pose (Point format like advanced detector)
             self.lane_pose_pub.publish(lane_pose)
             
             # Publish lane found status
-            self.lane_found_pub.publish(Bool(lane_pose.point.z > 0.5))
+            self.lane_found_pub.publish(Bool(lane_pose.z > 0.5))
+            
+            # Publish lane center (for compatibility)
+            lane_center = Point()
+            lane_center.x = lane_pose.x
+            lane_center.y = 0.0
+            lane_center.z = 0.0
+            self.lane_center_pub.publish(lane_center)
+            
+            # Publish lane angle
+            self.lane_angle_pub.publish(Float32(lane_pose.y))
+            
+            # Publish detection info
+            info_msg = f"Neural: L={lane_pose.z > 0.5}, Conf: {confidence:.2f}"
+            self.detection_info_pub.publish(String(info_msg))
             
             # Publish confidence
             self.lane_confidence_pub.publish(Float32(confidence))
             
             # Publish debug image
             debug_msg = self.bridge.cv2_to_imgmsg(debug_image, "bgr8")
-            debug_msg.header = header
             self.debug_image_pub.publish(debug_msg)
             
         except Exception as e:

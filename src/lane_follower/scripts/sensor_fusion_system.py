@@ -118,6 +118,9 @@ class SensorFusionSystem:
         # Subscribers for different sensors
         self.setup_subscribers()
         
+        # Disable sensor fusion for now - just pass through lane data
+        self.fusion_enabled = False
+        
         # Sensor data storage
         self.camera_data = None
         self.imu_data = None
@@ -160,9 +163,9 @@ class SensorFusionSystem:
     
     def setup_subscribers(self):
         """Setup subscribers for all sensor inputs"""
-        # Camera-based lane detection
-        self.neural_pose_sub = rospy.Subscriber('/lane_follower/neural_lane_pose', 
-                                               PointStamped, self.camera_callback)
+        # Camera-based lane detection - use same topics as other components
+        self.lane_pose_sub = rospy.Subscriber('/lane_follower/lane_pose', 
+                                             Point, self.camera_callback)
         self.lane_confidence_sub = rospy.Subscriber('/lane_follower/lane_confidence', 
                                                    Float32, self.camera_confidence_callback)
         
@@ -190,16 +193,20 @@ class SensorFusionSystem:
     def camera_callback(self, msg):
         """Process camera-based lane detection"""
         self.camera_data = {
-            'lateral_offset': msg.point.x,
-            'heading_error': msg.point.y,
-            'lane_found': msg.point.z > 0.5,
-            'timestamp': msg.header.stamp,
+            'lateral_offset': msg.x,
+            'heading_error': msg.y,
+            'lane_found': msg.z > 0.5,
+            'timestamp': rospy.Time.now(),
             'confidence': 0.8  # Default confidence, updated by confidence callback
         }
         self.last_camera_time = rospy.Time.now()
         
         # Update sensor health
         self.sensor_health['camera'].append(1.0 if self.camera_data['lane_found'] else 0.0)
+        
+        # If fusion disabled, just pass through the data
+        if not self.fusion_enabled:
+            self.publish_passthrough_data(msg)
     
     def camera_confidence_callback(self, msg):
         """Update camera confidence"""
@@ -499,6 +506,34 @@ class SensorFusionSystem:
         debug_msg = Float32MultiArray()
         debug_msg.data = debug_data
         self.fusion_debug_pub.publish(debug_msg)
+
+    def publish_passthrough_data(self, lane_pose_msg):
+        """Pass through lane data when fusion is disabled"""
+        try:
+            # Create fused pose message
+            pose_msg = PoseStamped()
+            pose_msg.header.stamp = rospy.Time.now()
+            pose_msg.header.frame_id = "base_link"
+            pose_msg.pose.position.x = 0.0
+            pose_msg.pose.position.y = 0.0
+            pose_msg.pose.position.z = 0.0
+            pose_msg.pose.orientation.w = 1.0
+            self.fused_pose_pub.publish(pose_msg)
+            
+            # Create fused lane pose (just pass through)
+            fused_lane_pose = PointStamped()
+            fused_lane_pose.header.stamp = rospy.Time.now()
+            fused_lane_pose.header.frame_id = "base_link"
+            fused_lane_pose.point.x = lane_pose_msg.x
+            fused_lane_pose.point.y = lane_pose_msg.y
+            fused_lane_pose.point.z = lane_pose_msg.z
+            self.fused_lane_pose_pub.publish(fused_lane_pose)
+            
+            # Publish confidence
+            self.fusion_confidence_pub.publish(Float32(0.8))
+            
+        except Exception as e:
+            rospy.logerr(f"Error in passthrough: {str(e)}")
 
 if __name__ == '__main__':
     try:
