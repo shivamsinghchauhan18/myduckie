@@ -11,7 +11,7 @@ import numpy as np
 from sensor_msgs.msg import Image, CompressedImage
 from geometry_msgs.msg import Point
 from std_msgs.msg import Bool, Float32, String, Header
-from duckietown_msgs.msg import LanePose, Twist2DStamped
+from geometry_msgs.msg import Twist
 from cv_bridge import CvBridge
 import threading
 import time
@@ -24,7 +24,7 @@ class AdvancedLaneDetector:
         self.bridge = CvBridge()
         
         # Publishers
-        self.lane_pose_pub = rospy.Publisher('/lane_follower/lane_pose', LanePose, queue_size=1)
+        self.lane_pose_pub = rospy.Publisher('/lane_follower/lane_pose', Point, queue_size=1)
         self.lane_found_pub = rospy.Publisher('/lane_follower/lane_found', Bool, queue_size=1)
         self.debug_image_pub = rospy.Publisher('/lane_follower/debug_image', Image, queue_size=1)
         self.lane_center_pub = rospy.Publisher('/lane_follower/lane_center', Point, queue_size=1)
@@ -399,16 +399,11 @@ class AdvancedLaneDetector:
             lane_found = True
             self.lane_confidence = 0.7
         
-        # Create LanePose message
-        lane_pose = LanePose()
-        lane_pose.header = Header()
-        lane_pose.header.stamp = rospy.Time.now()
-        lane_pose.header.frame_id = "base_link"
-        
-        lane_pose.d = lateral_offset  # Lateral offset
-        lane_pose.phi = heading_angle  # Heading angle
-        lane_pose.in_lane = lane_found
-        lane_pose.status = 0 if lane_found else 1
+        # Create Point message for lane pose
+        lane_pose = Point()
+        lane_pose.x = lateral_offset  # Lateral offset
+        lane_pose.y = heading_angle   # Heading angle
+        lane_pose.z = 1.0 if lane_found else 0.0  # Lane found status
         
         return lane_pose
     
@@ -454,7 +449,7 @@ class AdvancedLaneDetector:
         self.lane_pose_pub.publish(lane_pose)
         
         # Publish lane found status
-        self.lane_found_pub.publish(Bool(lane_pose.in_lane))
+        self.lane_found_pub.publish(Bool(lane_pose.z > 0.5))
         
         # Publish lane center point
         if left_lane and right_lane:
@@ -468,7 +463,7 @@ class AdvancedLaneDetector:
             self.lane_center_pub.publish(center_point)
         
         # Publish lane angle
-        self.lane_angle_pub.publish(Float32(lane_pose.phi))
+        self.lane_angle_pub.publish(Float32(lane_pose.y))
         
         # Publish detection info
         info_msg = f"Lanes: L={left_lane is not None}, R={right_lane is not None}, Conf: {self.lane_confidence:.2f}"

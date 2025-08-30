@@ -8,14 +8,14 @@ Real-time monitoring and status reporting
 import rospy
 from geometry_msgs.msg import Point, Twist
 from std_msgs.msg import Bool, Float32, String
-from duckietown_msgs.msg import LanePose
+# Using standard ROS messages
 
 class LaneSystemMonitor:
     def __init__(self):
         rospy.init_node('lane_system_monitor', anonymous=True)
         
         # Subscribers
-        rospy.Subscriber('/lane_follower/lane_pose', LanePose, self.lane_pose_callback)
+        rospy.Subscriber('/lane_follower/lane_pose', Point, self.lane_pose_callback)
         rospy.Subscriber('/lane_follower/lane_found', Bool, self.lane_found_callback)
         rospy.Subscriber('/lane_follower/lane_center', Point, self.lane_center_callback)
         rospy.Subscriber('/lane_follower/obstacle_detected', Bool, self.obstacle_callback)
@@ -50,7 +50,7 @@ class LaneSystemMonitor:
     
     def lane_pose_callback(self, msg):
         self.lane_pose = msg
-        if msg.in_lane:
+        if msg.z > 0.5:
             self.lane_detection_count += 1
     
     def lane_found_callback(self, msg):
@@ -85,8 +85,8 @@ class LaneSystemMonitor:
         
         # Log significant control actions
         if self.lane_found and self.lane_pose and self.lane_center:
-            lateral_error = self.lane_pose.d
-            heading_error = self.lane_pose.phi
+            lateral_error = self.lane_pose.x
+            heading_error = self.lane_pose.y
             
             # Log when making significant corrections
             if abs(lateral_error) > 0.2 or abs(heading_error) > 0.3:
@@ -132,7 +132,7 @@ class LaneSystemMonitor:
             rospy.loginfo(f"📍 CURRENT POSITION:")
             rospy.loginfo(f"   Lateral Error: {lateral_error:.4f} (0 = perfect center)")
             rospy.loginfo(f"   Heading Error: {heading_error:.4f} rad")
-            rospy.loginfo(f"   In Lane: {self.lane_pose.in_lane}")
+            rospy.loginfo(f"   In Lane: {self.lane_pose.z > 0.5}")
         
         if self.current_velocity:
             rospy.loginfo(f"🚗 CURRENT MOTION:")
@@ -166,9 +166,9 @@ class LaneSystemMonitor:
         
         # Deduct points for poor lane tracking
         if self.lane_pose:
-            if abs(self.lane_pose.d) > 0.3:  # Poor lateral positioning
+            if abs(self.lane_pose.x) > 0.3:  # Poor lateral positioning
                 health_score -= 15
-            if abs(self.lane_pose.phi) > 0.4:  # Poor heading
+            if abs(self.lane_pose.y) > 0.4:  # Poor heading
                 health_score -= 10
         
         # Check for recent activity

@@ -8,7 +8,7 @@ Comprehensive performance tracking and analysis
 import rospy
 from geometry_msgs.msg import Point, Twist
 from std_msgs.msg import Bool, Float32, String
-from duckietown_msgs.msg import LanePose
+# Using standard ROS messages
 import numpy as np
 from collections import deque
 
@@ -17,7 +17,7 @@ class LanePerformanceMonitor:
         rospy.init_node('lane_performance_monitor', anonymous=True)
         
         # Subscribers
-        rospy.Subscriber('/lane_follower/lane_pose', LanePose, self.lane_pose_callback)
+        rospy.Subscriber('/lane_follower/lane_pose', Point, self.lane_pose_callback)
         rospy.Subscriber('/lane_follower/lane_found', Bool, self.lane_found_callback)
         rospy.Subscriber('/lane_follower/lane_center', Point, self.lane_center_callback)
         rospy.Subscriber('/lane_follower/detection_info', String, self.detection_info_callback)
@@ -65,11 +65,11 @@ class LanePerformanceMonitor:
     
     def lane_pose_callback(self, msg):
         # Track lateral error (distance from lane center)
-        lateral_error = abs(msg.d)
+        lateral_error = abs(msg.x)
         self.lateral_errors.append(lateral_error)
         
         # Track heading error (angle deviation)
-        heading_error = abs(msg.phi)
+        heading_error = abs(msg.y)
         self.heading_errors.append(heading_error)
         
         # Calculate lane centering accuracy
@@ -81,7 +81,7 @@ class LanePerformanceMonitor:
         self.heading_stability.append(heading_stability)
         
         # Record response time if lane was just acquired
-        if msg.in_lane and not self.last_lane_found:
+        if msg.z > 0.5 and not self.last_lane_found:
             current_time = rospy.Time.now()
             if self.last_detection_time:
                 response_time = (current_time - self.last_detection_time).to_sec()

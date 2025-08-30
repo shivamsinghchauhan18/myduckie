@@ -9,7 +9,7 @@ import rospy
 import numpy as np
 from geometry_msgs.msg import Point, Twist
 from std_msgs.msg import Bool, Float32, Header
-from duckietown_msgs.msg import WheelsCmdStamped, Twist2DStamped, LanePose
+from geometry_msgs.msg import Twist
 
 class EnhancedLaneController:
     def __init__(self):
@@ -17,15 +17,14 @@ class EnhancedLaneController:
         
         # Publishers - Full DuckieBot integration
         self.cmd_vel_pub = rospy.Publisher('/cmd_vel', Twist, queue_size=1)
-        self.wheels_pub = rospy.Publisher('/wheels_driver_node/wheels_cmd', WheelsCmdStamped, queue_size=1)
-        self.duckiebot_vel_pub = rospy.Publisher('/car_cmd_switch_node/cmd', Twist2DStamped, queue_size=1)
+        # Additional publishers can be added later if needed
         
         # Performance monitoring publishers
         self.performance_pub = rospy.Publisher('/lane_follower/performance', Float32, queue_size=1)
         self.control_status_pub = rospy.Publisher('/lane_follower/control_status', Bool, queue_size=1)
         
         # Subscribers
-        self.lane_pose_sub = rospy.Subscriber('/lane_follower/lane_pose', LanePose, self.lane_pose_callback)
+        self.lane_pose_sub = rospy.Subscriber('/lane_follower/lane_pose', Point, self.lane_pose_callback)
         self.lane_found_sub = rospy.Subscriber('/lane_follower/lane_found', Bool, self.lane_found_callback)
         self.lane_center_sub = rospy.Subscriber('/lane_follower/lane_center', Point, self.lane_center_callback)
         self.obstacle_sub = rospy.Subscriber('/lane_follower/obstacle_detected', Bool, self.obstacle_callback)
@@ -144,8 +143,8 @@ class EnhancedLaneController:
         dt = 0.05  # 20 Hz control loop
         
         # Extract lane pose information
-        lateral_error = self.current_lane_pose.d  # Lateral offset
-        heading_error = self.current_lane_pose.phi  # Heading angle error
+        lateral_error = self.current_lane_pose.x  # Lateral offset
+        heading_error = self.current_lane_pose.y  # Heading angle error
         
         # LATERAL CONTROL (steering based on position error)
         self.lateral_error_integral += lateral_error * dt
@@ -247,8 +246,8 @@ class EnhancedLaneController:
     def apply_safety_limits(self, linear_vel, angular_vel):
         """Apply safety limits to control commands"""
         # Check for excessive lateral error
-        if self.current_lane_pose and abs(self.current_lane_pose.d) > self.emergency_stop_threshold:
-            rospy.logwarn(f"⚠️ Excessive lateral error: {self.current_lane_pose.d:.3f}")
+        if self.current_lane_pose and abs(self.current_lane_pose.x) > self.emergency_stop_threshold:
+            rospy.logwarn(f"⚠️ Excessive lateral error: {self.current_lane_pose.x:.3f}")
             linear_vel = 0.0
             angular_vel = 0.0
         
@@ -295,9 +294,9 @@ class EnhancedLaneController:
             'timestamp': rospy.Time.now().to_sec(),
             'linear_vel': linear_vel,
             'angular_vel': angular_vel,
-            'lateral_error': self.current_lane_pose.d,
-            'heading_error': self.current_lane_pose.phi,
-            'in_lane': self.current_lane_pose.in_lane
+            'lateral_error': self.current_lane_pose.x,
+            'heading_error': self.current_lane_pose.y,
+            'in_lane': self.current_lane_pose.z > 0.5
         }
         
         self.control_history.append(control_data)
@@ -338,35 +337,12 @@ class EnhancedLaneController:
         return min(100.0, max(0.0, overall_score))
     
     def publish_velocity_commands(self, linear_vel, angular_vel):
-        """Publish velocity commands to all supported topics"""
-        current_time = rospy.Time.now()
-        
-        # 1. Standard ROS Twist message
+        """Publish velocity commands to standard ROS topics"""
+        # Standard ROS Twist message
         twist_msg = Twist()
         twist_msg.linear.x = linear_vel
         twist_msg.angular.z = angular_vel
         self.cmd_vel_pub.publish(twist_msg)
-        
-        # 2. DuckieBot Twist2DStamped message
-        duckiebot_msg = Twist2DStamped()
-        duckiebot_msg.header = Header()
-        duckiebot_msg.header.stamp = current_time
-        duckiebot_msg.header.frame_id = "base_link"
-        duckiebot_msg.v = linear_vel
-        duckiebot_msg.omega = angular_vel
-        self.duckiebot_vel_pub.publish(duckiebot_msg)
-        
-        # 3. DuckieBot WheelsCmdStamped message
-        vel_left = linear_vel - angular_vel * self.wheel_distance / 2.0
-        vel_right = linear_vel + angular_vel * self.wheel_distance / 2.0
-        
-        wheels_msg = WheelsCmdStamped()
-        wheels_msg.header = Header()
-        wheels_msg.header.stamp = current_time
-        wheels_msg.header.frame_id = "base_link"
-        wheels_msg.vel_left = vel_left
-        wheels_msg.vel_right = vel_right
-        self.wheels_pub.publish(wheels_msg)
     
     def emergency_stop(self):
         """Emergency stop with immediate brake"""
