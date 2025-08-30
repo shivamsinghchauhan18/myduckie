@@ -8,9 +8,44 @@ Uses lightweight CNN for real-time lane detection with superior accuracy
 import rospy
 import cv2
 import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+try:
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    TORCH_AVAILABLE = True
+except ImportError:
+    rospy.logwarn("PyTorch not available. Neural lane detection will use fallback mode.")
+    TORCH_AVAILABLE = False
+    # Create dummy classes for compatibility
+    class nn:
+        class Module:
+            def __init__(self): pass
+            def to(self, device): return self
+            def eval(self): return self
+        class Conv2d: pass
+        class ConvTranspose2d: pass
+        class BatchNorm2d: pass
+        class Dropout2d: pass
+    class F:
+        @staticmethod
+        def relu(x): return x
+        @staticmethod
+        def max_pool2d(x, kernel_size): return x
+        @staticmethod
+        def softmax(x, dim): return x
+    class torch:
+        @staticmethod
+        def device(name): return "cpu"
+        @staticmethod
+        def from_numpy(x): return x
+        @staticmethod
+        def cat(tensors, dim): return tensors[0]
+        @staticmethod
+        def no_grad(): 
+            class NoGradContext:
+                def __enter__(self): return self
+                def __exit__(self, *args): pass
+            return NoGradContext()
 from sensor_msgs.msg import Image, CompressedImage
 from geometry_msgs.msg import Point, PointStamped
 from std_msgs.msg import Bool, Float32, String, Header, Float32MultiArray
@@ -126,10 +161,16 @@ class NeuralLaneDetector:
                                            queue_size=1, buff_size=2**24)
         
         # Neural network setup
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.model = LightweightLaneNet()
-        self.model.to(self.device)
-        self.model.eval()
+        if TORCH_AVAILABLE:
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            self.model = LightweightLaneNet()
+            self.model.to(self.device)
+            self.model.eval()
+            rospy.loginfo("Neural network initialized with PyTorch")
+        else:
+            self.device = "cpu"
+            self.model = None
+            rospy.logwarn("Neural network disabled - PyTorch not available. Using fallback detection.")
         
         # Initialize with pretrained weights if available
         self.load_pretrained_weights()
@@ -160,9 +201,43 @@ class NeuralLaneDetector:
         try:
             # In a real implementation, you'd load actual pretrained weights
             # For now, we'll use random initialization
-            rospy.loginfo("Using randomly initialized weights (replace with pretrained)")
+            if TORCH_AVAILABLE:
+                rospy.loginfo("Using randomly initialized weights (replace with pretrained)")
+            else:
+                rospy.loginfo("Neural weights not loaded - using fallback detection")
         except Exception as e:
             rospy.logwarn(f"Could not load pretrained weights: {e}")
+    
+    def fallback_lane_detection(self, processed_image):
+        """Fallback lane detection using traditional computer vision"""
+        # Convert back to OpenCV format
+        image_bgr = np.transpose(processed_image, (1, 2, 0))
+        image_bgr = (image_bgr * 255).astype(np.uint8)
+        image_bgr = cv2.cvtColor(image_bgr, cv2.COLOR_RGB2BGR)
+        
+        # Create fake segmentation output
+        height, width = image_bgr.shape[:2]
+        segmentation = np.zeros((3, height, width), dtype=np.float32)
+        
+        # Use color-based detection for lanes
+        hsv = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV)
+        
+        # Yellow lane detection
+        yellow_lower = np.array([15, 80, 80])
+        yellow_upper = np.array([35, 255, 255])
+        yellow_mask = cv2.inRange(hsv, yellow_lower, yellow_upper)
+        
+        # White lane detection
+        white_lower = np.array([0, 0, 200])
+        white_upper = np.array([255, 30, 255])
+        white_mask = cv2.inRange(hsv, white_lower, white_upper)
+        
+        # Assign to segmentation channels
+        segmentation[1] = yellow_mask.astype(np.float32) / 255.0  # Left lane (yellow)
+        segmentation[2] = white_mask.astype(np.float32) / 255.0   # Right lane (white)
+        segmentation[0] = 1.0 - np.maximum(segmentation[1], segmentation[2])  # Background
+        
+        return segmentation
     
     def compressed_image_callback(self, msg):
         """Handle compressed images from DuckieBot camera"""
@@ -198,11 +273,15 @@ class NeuralLaneDetector:
             # Preprocess image for neural network
             processed_image = self.preprocess_image(image)
             
-            # Run neural network inference
-            with torch.no_grad():
-                input_tensor = torch.from_numpy(processed_image).unsqueeze(0).to(self.device)
-                output = self.model(input_tensor)
-                segmentation = output.cpu().numpy()[0]
+            # Run neural network inference or fallback
+            if TORCH_AVAILABLE and self.model is not None:
+                with torch.no_grad():
+                    input_tensor = torch.from_numpy(processed_image).unsqueeze(0).to(self.device)
+                    output = self.model(input_tensor)
+                    segmentation = output.cpu().numpy()[0]
+            else:
+                # Fallback: use traditional computer vision
+                segmentation = self.fallback_lane_detection(processed_image)
             
             # Post-process neural network output
             left_lane, right_lane, confidence = self.postprocess_segmentation(segmentation)

@@ -52,12 +52,42 @@ echo "🚀 Launching ultra-advanced lane following system..."
 echo "   This may take a moment to initialize all AI systems..."
 echo ""
 
+# Check for launch file preference
+LAUNCH_FILE="ultra_advanced_lane_following_standalone.launch"
+if [ "$1" = "--full" ]; then
+    LAUNCH_FILE="ultra_advanced_lane_following.launch"
+    echo "   🔗 Using full integration with AprilTags and YOLO"
+else
+    echo "   🎯 Using standalone version (core AI systems only)"
+    echo "   💡 Use --full flag for complete integration with all packages"
+fi
+
+# Check if launch file exists
+if [ ! -f "src/lane_follower/launch/$LAUNCH_FILE" ]; then
+    echo "❌ Launch file not found: $LAUNCH_FILE"
+    echo "   Please ensure the workspace is built correctly"
+    exit 1
+fi
+
 # Launch the ultra-advanced system
-roslaunch lane_follower ultra_advanced_lane_following.launch robot_name:=blueduckie \
+echo "🎬 Starting launch sequence..."
+roslaunch lane_follower $LAUNCH_FILE robot_name:=blueduckie \
     use_neural_detection:=true \
     use_mpc_control:=true \
     use_sensor_fusion:=true \
     use_adaptive_learning:=true
+
+# Check launch result
+if [ $? -eq 0 ]; then
+    echo ""
+    echo "✅ Ultra-Advanced Lane Following System started successfully!"
+else
+    echo ""
+    echo "❌ Launch failed. Check the error messages above."
+    echo "💡 Try running with basic features first:"
+    echo "   roslaunch lane_follower advanced_lane_following.launch"
+    exit 1
+fi
 
 echo ""
 echo "✅ Ultra-Advanced Lane Following System started successfully!"
