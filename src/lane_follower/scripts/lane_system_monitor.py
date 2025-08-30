@@ -111,8 +111,8 @@ class LaneSystemMonitor:
         control_rate = self.control_command_count / max(uptime, 1.0)
         
         # Current state information
-        lateral_error = self.lane_pose.d if self.lane_pose else 0.0
-        heading_error = self.lane_pose.phi if self.lane_pose else 0.0
+        lateral_error = self.lane_pose.x if self.lane_pose else 0.0
+        heading_error = self.lane_pose.y if self.lane_pose else 0.0
         current_speed = self.current_velocity.linear.x if self.current_velocity else 0.0
         current_angular = self.current_velocity.angular.z if self.current_velocity else 0.0
         

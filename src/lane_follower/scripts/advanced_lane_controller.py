@@ -343,9 +343,9 @@ class AdvancedLaneController:
         lane_pose.header.stamp = rospy.Time.now()
         lane_pose.header.frame_id = "base_link"
         
-        lane_pose.d = self.lane_detection.x  # Lateral offset
-        lane_pose.phi = self.lane_detection.y  # Heading error
-        lane_pose.in_lane = self.lane_found
+        lane_pose.x = self.lane_detection.x  # Lateral offset
+        lane_pose.y = self.lane_detection.y  # Heading error
+        lane_pose.z = 1.0 if self.lane_found else 0.0  # In lane status
         lane_pose.status = 0 if self.lane_found else 1
         lane_pose.v_ref = self.target_speed
         

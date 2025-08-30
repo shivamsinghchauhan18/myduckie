@@ -431,9 +431,9 @@ class AdvancedLaneDetector:
         
         # Draw lane pose information
         info_text = [
-            f"Lateral Offset: {lane_pose.d:.3f}",
-            f"Heading Angle: {lane_pose.phi:.3f}",
-            f"In Lane: {lane_pose.in_lane}",
+            f"Lateral Offset: {lane_pose.x:.3f}",
+            f"Heading Angle: {lane_pose.y:.3f}",
+            f"In Lane: {lane_pose.z > 0.5}",
             f"Confidence: {self.lane_confidence:.2f}"
         ]
         
